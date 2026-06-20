@@ -66,15 +66,37 @@ function shieldThreadTooltipHtml(report) {
       <p>${shieldThreadGmailEscape(finding.detail)}</p>
     </div>
   `).join("");
+  const framework = report.framework ? `
+    <div class="shieldthread-gmail-tooltip-finding">
+      <b>${report.framework.senderSeenBefore ? "Known sender path" : "First-pass spoofing framework"}</b>
+      <span>${shieldThreadGmailEscape(report.framework.steps?.mergeDecision || "allow")}</span>
+      <p>${shieldThreadGmailEscape(shieldThreadFrameworkSummary(report))}</p>
+    </div>
+  ` : "";
 
   return `
     <div class="shieldthread-gmail-tooltip-head">
       <strong>${shieldThreadRiskLabel(report.level)} risk</strong>
       <span>${report.score}/100</span>
     </div>
+    ${framework}
     ${findings || "<p>No strong spoofing indicators found in the preview text.</p>"}
     <em>${shieldThreadGmailEscape(report.recommendation)}</em>
   `;
+}
+
+function shieldThreadFrameworkSummary(report) {
+  if (!report.framework) return "Standard content, link, and sender checks were applied.";
+  if (report.framework.senderSeenBefore) return "This sender already passed a full ShieldThread scan, so the framework used the seen-before break path.";
+
+  const checks = report.framework.checks || {};
+  const flags = [];
+  if (checks.senderSpoofed) flags.push("sender spoofing");
+  if (checks.linksOrAttachmentsSpoofed) flags.push("link or attachment spoofing");
+  if (checks.comprehensionFlags?.length) flags.push("content intent");
+  return flags.length
+    ? `Unknown sender was checked for ${flags.join(", ")} before the merged judgement.`
+    : "Unknown sender was checked for sender, link, attachment, and content-spoofing signals.";
 }
 
 function shieldThreadShowTooltip(anchor, report) {
@@ -86,8 +108,10 @@ function shieldThreadShowTooltip(anchor, report) {
 
   const rect = anchor.getBoundingClientRect();
   const width = 320;
-  const left = Math.max(12, Math.min(window.innerWidth - width - 12, rect.right - width));
-  const top = Math.max(12, rect.top - tooltip.offsetHeight - 12);
+  const preferredLeft = rect.left - width - 28;
+  const fallbackLeft = rect.right - width - 132;
+  const left = Math.max(12, Math.min(window.innerWidth - width - 12, preferredLeft > 12 ? preferredLeft : fallbackLeft));
+  const top = Math.max(12, Math.min(window.innerHeight - tooltip.offsetHeight - 12, rect.top - 18));
   tooltip.style.left = `${left}px`;
   tooltip.style.top = `${top}px`;
 }
@@ -112,12 +136,25 @@ function shieldThreadRenderRowRisk(row, report) {
     <span class="shieldthread-row-risk-score">${report.score}</span>
   `;
 
-  bar.addEventListener("mouseenter", () => shieldThreadShowTooltip(bar, report));
-  bar.addEventListener("mouseleave", shieldThreadHideTooltip);
-  bar.addEventListener("focus", () => shieldThreadShowTooltip(bar, report));
-  bar.addEventListener("blur", shieldThreadHideTooltip);
+  bar.addEventListener("mouseenter", () => {
+    bar.classList.add("shieldthread-row-risk-active");
+    shieldThreadShowTooltip(bar, report);
+  });
+  bar.addEventListener("mouseleave", () => {
+    bar.classList.remove("shieldthread-row-risk-active");
+    shieldThreadHideTooltip();
+  });
+  bar.addEventListener("focus", () => {
+    bar.classList.add("shieldthread-row-risk-active");
+    shieldThreadShowTooltip(bar, report);
+  });
+  bar.addEventListener("blur", () => {
+    bar.classList.remove("shieldthread-row-risk-active");
+    shieldThreadHideTooltip();
+  });
   bar.addEventListener("click", (event) => {
     event.stopPropagation();
+    bar.classList.add("shieldthread-row-risk-active");
     shieldThreadShowTooltip(bar, report);
   });
 
@@ -125,17 +162,45 @@ function shieldThreadRenderRowRisk(row, report) {
   dateCell.insertBefore(bar, dateCell.firstChild);
 }
 
+function shieldThreadRequestEmailPreview(payload, callback) {
+  const fallback = () => {
+    const report = window.ShieldThreadRiskEngine?.analyzeSurface(payload);
+    callback(report || null);
+  };
+
+  if (typeof chrome === "undefined" || !chrome.runtime?.sendMessage) {
+    fallback();
+    return;
+  }
+
+  chrome.runtime.sendMessage({ type: "SCAN_EMAIL_PREVIEW", payload }, (report) => {
+    if (chrome.runtime.lastError || !report) {
+      fallback();
+      return;
+    }
+    callback(report);
+  });
+}
+
 function shieldThreadScanGmailRows() {
-  if (!window.ShieldThreadRiskEngine) return;
   const rows = [...document.querySelectorAll("tr.zA, div[role='main'] tr[role='row']")].slice(0, 80);
   rows.forEach((row) => {
-    if (row.dataset.shieldThreadScanned === "true") return;
+    if (row.dataset.shieldThreadScanned === "true" || row.dataset.shieldThreadScanState === "pending") return;
     const payload = shieldThreadExtractRow(row);
     if (!payload.sender && !payload.text.trim()) return;
-    const report = window.ShieldThreadRiskEngine.analyzeSurface(payload);
-    row.dataset.shieldThreadScanned = "true";
-    row.dataset.shieldThreadRisk = report.level;
-    shieldThreadRenderRowRisk(row, report);
+
+    row.dataset.shieldThreadScanState = "pending";
+    shieldThreadRequestEmailPreview(payload, (report) => {
+      if (!report || !row.isConnected) {
+        delete row.dataset.shieldThreadScanState;
+        return;
+      }
+
+      row.dataset.shieldThreadScanState = "done";
+      row.dataset.shieldThreadScanned = "true";
+      row.dataset.shieldThreadRisk = report.level;
+      shieldThreadRenderRowRisk(row, report);
+    });
   });
 }
 
@@ -143,6 +208,7 @@ function shieldThreadRenderGmailBar(report) {
   document.querySelector(".shieldthread-email-bar")?.remove();
   const color = shieldThreadRiskColor(report.level);
   const label = `${shieldThreadRiskLabel(report.level)} Risk`;
+  const frameworkSummary = shieldThreadFrameworkSummary(report);
   const bar = document.createElement("aside");
   bar.className = "shieldthread-email-bar";
   bar.innerHTML = `
@@ -153,6 +219,7 @@ function shieldThreadRenderGmailBar(report) {
       <span>${report.score}/100</span>
     </div>
     <p style="margin:10px 0 0;color:#4b5563;font-size:13px">${shieldThreadGmailEscape(report.findings[0]?.detail || "No strong spoofing indicators found.")}</p>
+    <p style="margin:8px 0 0;color:#475569;font-size:12px;line-height:1.42">${shieldThreadGmailEscape(frameworkSummary)}</p>
     <button class="shieldthread-button secondary" style="width:100%;margin-top:12px" type="button">View details</button>
   `;
 
@@ -162,6 +229,7 @@ function shieldThreadRenderGmailBar(report) {
     detail.style.top = "96px";
     detail.innerHTML = `
       <strong>Findings</strong>
+      <p><b>Framework</b>: ${shieldThreadGmailEscape(frameworkSummary)}</p>
       ${report.findings.slice(0, 6).map((finding) => `<p><b>${shieldThreadGmailEscape(finding.category)}</b>: ${shieldThreadGmailEscape(finding.detail)}</p>`).join("") || "<p>No major findings.</p>"}
     `;
     document.body.appendChild(detail);

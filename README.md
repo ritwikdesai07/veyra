@@ -20,6 +20,25 @@ ShieldThread is a hackathon-stage Chrome extension prototype for explainable phi
 4. Choose this folder: `C:\Users\ritwi_m2ofaxd\OneDrive\Documents\Coding\Njx Hackathon`.
 5. To test local files, open the extension details page and enable **Allow access to file URLs**.
 
+## Optional local ML model
+
+ShieldThread can call a local XGBoost URL classifier when the model server is running.
+
+```powershell
+python -m pip install -r ml\requirements.txt
+python ml\url_model_server.py
+```
+
+The server loads `C:\Users\ritwi_m2ofaxd\Downloads\XGBoostClassifier.pickle.dat` by default. If it is running, website URLs and links found in emails/documents can receive an extra `ML URL model` finding. If it is not running, ShieldThread silently falls back to the explainable JavaScript rules.
+
+If the pickle fails with an older-XGBoost serialization error, convert it from the original training environment:
+
+```powershell
+python ml\convert_legacy_xgboost.py C:\Users\ritwi_m2ofaxd\Downloads\XGBoostClassifier.pickle.dat --out ml\xgboost_url_model.json
+$env:SHIELDTHREAD_MODEL_PATH="C:\Users\ritwi_m2ofaxd\OneDrive\Documents\Coding\Njx Hackathon\ml\xgboost_url_model.json"
+python ml\url_model_server.py
+```
+
 ## Competitive landscape
 
 Products already exist in this neighborhood:

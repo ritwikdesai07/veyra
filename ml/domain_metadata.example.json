@@ -1,0 +1,10 @@
+{
+  "example.com": {
+    "Domain_Age": 0,
+    "Domain_End": 0
+  },
+  "new-suspicious-domain.test": {
+    "Domain_Age": 1,
+    "Domain_End": 1
+  }
+}

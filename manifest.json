@@ -13,6 +13,7 @@
   },
   "permissions": [
     "downloads",
+    "history",
     "storage",
     "tabs"
   ],

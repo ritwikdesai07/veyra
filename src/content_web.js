@@ -5,6 +5,37 @@ const shieldThreadState = {
   game: null
 };
 
+function shieldThreadIsGoogleSearchPage() {
+  const host = location.hostname.replace(/^www\./, "").toLowerCase();
+  if (host !== "google.com" && !host.endsWith(".google.com")) return false;
+
+  const path = location.pathname.toLowerCase();
+  const params = new URLSearchParams(location.search);
+  if (host === "google.com" && ["/", "/search", "/webhp", "/imghp", "/url"].includes(path)) return true;
+  return ["/search", "/url"].includes(path) || (path === "/" && params.has("q"));
+}
+
+function shieldThreadShouldSkipWebsiteGate() {
+  return shieldThreadIsGoogleSearchPage();
+}
+
+function shieldThreadAskWebsiteGateDecision() {
+  return new Promise((resolve) => {
+    if (typeof chrome === "undefined" || !chrome.runtime?.sendMessage) {
+      resolve({ shouldGate: true, reason: "runtime-unavailable" });
+      return;
+    }
+
+    chrome.runtime.sendMessage({ type: "SHOULD_GATE_WEBSITE", payload: { url: location.href } }, (decision) => {
+      if (chrome.runtime.lastError) {
+        resolve({ shouldGate: true, reason: "runtime-error" });
+        return;
+      }
+      resolve(decision || { shouldGate: true, reason: "missing-decision" });
+    });
+  });
+}
+
 function shieldThreadCollectPage() {
   const links = [...document.links].map((link) => ({
     href: link.href,
@@ -88,6 +119,7 @@ function shieldThreadBuildGate() {
 
   document.documentElement.appendChild(gate);
   shieldThreadStartGame(gate.querySelector("#shieldthread-game-canvas"));
+  gate.querySelector(".shieldthread-game")?.focus({ preventScroll: true });
   return gate;
 }
 
@@ -359,15 +391,30 @@ function shieldThreadStartGame(canvas) {
     game.raf = requestAnimationFrame(loop);
   }
 
+  function normalizeGameKey(event) {
+    const key = String(event.key || "").toLowerCase();
+    const code = String(event.code || "").toLowerCase();
+    if (key === " " || key === "spacebar" || code === "space") return "space";
+    if (code.startsWith("key")) return code.slice(3);
+    if (code.startsWith("arrow")) return code;
+    return key;
+  }
+
+  function isTypingTarget(target) {
+    return target?.closest?.("input, textarea, select, [contenteditable='true']");
+  }
+
   function keydown(event) {
-    const key = event.key.toLowerCase();
-    if (["arrowleft", "arrowright", "arrowup", "arrowdown", "a", "d", "w", "s", " "].includes(key)) {
+    if (isTypingTarget(event.target)) return;
+    const key = normalizeGameKey(event);
+    if (["arrowleft", "arrowright", "arrowup", "arrowdown", "a", "d", "w", "s", "space"].includes(key)) {
       event.preventDefault();
-      if (key === " " && game.pulseCooldown === 0) {
+      event.stopPropagation();
+      if (key === "space" && game.pulseCooldown === 0) {
         game.player.pulse = 420;
         game.pulseCooldown = 900;
         addSpark(game.player.x, game.player.y, "#15803d");
-      } else {
+      } else if (key !== "space") {
         game.keys.add(key);
       }
       if (game.reducedMotion) {
@@ -378,19 +425,24 @@ function shieldThreadStartGame(canvas) {
   }
 
   function keyup(event) {
-    game.keys.delete(event.key.toLowerCase());
+    if (isTypingTarget(event.target)) return;
+    const key = normalizeGameKey(event);
+    game.keys.delete(key);
+    if (["arrowleft", "arrowright", "arrowup", "arrowdown", "a", "d", "w", "s", "space"].includes(key)) {
+      event.stopPropagation();
+    }
     if (game.reducedMotion) render();
   }
 
   resize();
   window.addEventListener("resize", resize);
-  document.addEventListener("keydown", keydown);
-  document.addEventListener("keyup", keyup);
+  window.addEventListener("keydown", keydown, true);
+  window.addEventListener("keyup", keyup, true);
   game.cleanup = () => {
     if (game.raf) cancelAnimationFrame(game.raf);
     window.removeEventListener("resize", resize);
-    document.removeEventListener("keydown", keydown);
-    document.removeEventListener("keyup", keyup);
+    window.removeEventListener("keydown", keydown, true);
+    window.removeEventListener("keyup", keyup, true);
   };
   updateHud();
   if (game.reducedMotion) {
@@ -463,9 +515,7 @@ function shieldThreadRenderGateReport(gate, report) {
   }
 }
 
-function shieldThreadStart() {
-  if (window.top !== window || location.protocol === "chrome-extension:") return;
-
+function shieldThreadRunWebsiteGate() {
   const gate = shieldThreadBuildGate();
   const timer = setInterval(() => {
     if (shieldThreadState.progress < 86) shieldThreadUpdateProgress(shieldThreadState.progress + 9);
@@ -485,6 +535,15 @@ function shieldThreadStart() {
   } else {
     runScan();
   }
+}
+
+function shieldThreadStart() {
+  if (window.top !== window || location.protocol === "chrome-extension:" || shieldThreadShouldSkipWebsiteGate()) return;
+
+  shieldThreadAskWebsiteGateDecision().then((decision) => {
+    if (!decision?.shouldGate || shieldThreadShouldSkipWebsiteGate()) return;
+    shieldThreadRunWebsiteGate();
+  });
 }
 
 shieldThreadStart();
