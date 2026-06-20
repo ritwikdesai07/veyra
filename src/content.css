@@ -1,0 +1,458 @@
+.shieldthread-rail,
+.shieldthread-gate,
+.shieldthread-email-bar,
+.shieldthread-doc-rail,
+.shieldthread-gmail-tooltip {
+  color: #101418;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  letter-spacing: 0;
+}
+
+.shieldthread-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483646;
+  display: grid;
+  grid-template-columns: minmax(420px, 1fr) 430px;
+  background: rgba(253, 254, 254, 0.985);
+}
+
+.shieldthread-gate-main {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 32px;
+}
+
+.shieldthread-wait-card {
+  width: min(760px, 94vw);
+}
+
+.shieldthread-mark {
+  width: 54px;
+  height: 54px;
+  border: 2px solid #111827;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: #15803d;
+  font-size: 18px;
+  font-weight: 900;
+  margin: 0 auto 18px;
+}
+
+.shieldthread-wait-card h1 {
+  margin: 0;
+  font-size: 34px;
+  line-height: 1.12;
+  text-align: center;
+}
+
+.shieldthread-wait-card p {
+  color: #4b5563;
+  font-size: 16px;
+  line-height: 1.55;
+  margin: 12px 0 0;
+  text-align: center;
+}
+
+.shieldthread-game {
+  margin-top: 24px;
+  border: 1px solid #d6d9de;
+  border-radius: 8px;
+  background: #f8fafc;
+  overflow: hidden;
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.08);
+}
+
+.shieldthread-game-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 18px;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 14px;
+}
+
+.shieldthread-game-head > span {
+  font-weight: 800;
+}
+
+.shieldthread-game-stats {
+  display: flex;
+  gap: 14px;
+  color: #334155;
+  font-size: 13px;
+}
+
+.shieldthread-canvas {
+  display: block;
+  width: 100%;
+  height: 300px;
+  background: #f8fafc;
+}
+
+.shieldthread-game-help {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-top: 1px solid #e5e7eb;
+  color: #475569;
+  font-size: 12px;
+}
+
+.shieldthread-progress {
+  margin-top: 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.shieldthread-progress-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  color: #334155;
+  font-size: 14px;
+}
+
+.shieldthread-progress-track {
+  height: 8px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  overflow: hidden;
+}
+
+.shieldthread-progress-fill {
+  width: 20%;
+  height: 100%;
+  background: #15803d;
+  transition: width 600ms ease;
+}
+
+.shieldthread-rail {
+  border-left: 1px solid #d6d9de;
+  background: #fdfefe;
+  overflow: auto;
+  padding: 24px;
+  box-shadow: -12px 0 30px rgba(15, 23, 42, 0.06);
+}
+
+.shieldthread-report-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.shieldthread-report-title h2 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.shieldthread-close {
+  width: 36px;
+  height: 36px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fdfefe;
+  cursor: pointer;
+  font-size: 20px;
+  transition: border-color 180ms ease, background-color 180ms ease;
+}
+
+.shieldthread-risk {
+  display: grid;
+  grid-template-columns: 58px 1fr;
+  gap: 14px;
+  align-items: center;
+  padding: 14px 0 20px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.shieldthread-risk-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  color: white;
+  font-weight: 900;
+}
+
+.shieldthread-risk h3 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.shieldthread-risk p {
+  margin: 4px 0 0;
+  color: #4b5563;
+  font-size: 14px;
+}
+
+.shieldthread-finding {
+  padding: 14px 0;
+  border-bottom: 1px solid #edf0f2;
+}
+
+.shieldthread-finding strong {
+  display: block;
+  font-size: 14px;
+}
+
+.shieldthread-finding span {
+  display: inline-flex;
+  margin-top: 8px;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.shieldthread-finding p {
+  margin: 8px 0 0;
+  color: #4b5563;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.shieldthread-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.shieldthread-input {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 12px;
+  font: inherit;
+}
+
+.shieldthread-button {
+  border: 1px solid #111827;
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: #111827;
+  color: white;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease;
+}
+
+.shieldthread-button.secondary {
+  background: #fdfefe;
+  color: #111827;
+}
+
+.shieldthread-button:hover,
+.shieldthread-close:hover {
+  border-color: #15803d;
+}
+
+.shieldthread-button:focus-visible,
+.shieldthread-close:focus-visible,
+.shieldthread-input:focus-visible,
+.shieldthread-game:focus-visible,
+.shieldthread-row-risk:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.shieldthread-email-bar,
+.shieldthread-doc-rail {
+  position: fixed;
+  right: 16px;
+  top: 96px;
+  z-index: 2147483645;
+  width: 300px;
+  border: 1px solid #d6d9de;
+  border-radius: 8px;
+  background: #fdfefe;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.16);
+  padding: 14px;
+}
+
+.shieldthread-meter {
+  height: 9px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  overflow: hidden;
+  margin: 10px 0;
+}
+
+.shieldthread-meter > div {
+  height: 100%;
+}
+
+.shieldthread-date-cell {
+  min-width: 108px;
+}
+
+.shieldthread-row-risk {
+  display: inline-grid;
+  grid-template-columns: 46px 20px;
+  align-items: center;
+  gap: 5px;
+  height: 18px;
+  margin-right: 6px;
+  vertical-align: middle;
+  cursor: help;
+  color: #334155;
+  font: 700 11px/1 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  transition: opacity 180ms ease;
+}
+
+.shieldthread-row-risk:hover {
+  opacity: 0.82;
+}
+
+.shieldthread-row-risk-track {
+  display: block;
+  width: 46px;
+  height: 7px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #e5e7eb;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.06);
+}
+
+.shieldthread-row-risk-track > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.shieldthread-row-risk-score {
+  text-align: left;
+}
+
+.shieldthread-gmail-tooltip {
+  position: fixed;
+  z-index: 2147483647;
+  width: 320px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fdfefe;
+  box-shadow: 0 22px 55px rgba(15, 23, 42, 0.22);
+  padding: 14px;
+  pointer-events: none;
+}
+
+.shieldthread-gmail-tooltip-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+
+.shieldthread-gmail-tooltip-finding {
+  padding: 8px 0;
+  border-bottom: 1px solid #edf0f2;
+}
+
+.shieldthread-gmail-tooltip-finding b {
+  display: block;
+  font-size: 12px;
+}
+
+.shieldthread-gmail-tooltip-finding span {
+  display: block;
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.shieldthread-gmail-tooltip p,
+.shieldthread-gmail-tooltip em {
+  display: block;
+  margin: 6px 0 0;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.42;
+}
+
+.shieldthread-ad-slot {
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 12px 14px;
+}
+
+.shieldthread-ad-slot-main {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  column-gap: 12px;
+  row-gap: 2px;
+  align-items: center;
+  margin-top: 14px;
+}
+
+.shieldthread-ad-slot span {
+  grid-row: span 2;
+  width: 28px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.shieldthread-ad-slot strong {
+  color: #334155;
+  font-size: 13px;
+}
+
+.shieldthread-ad-slot p {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.shieldthread-ad-slot-rail {
+  margin-top: 18px;
+}
+
+@media (max-width: 820px) {
+  .shieldthread-gate {
+    grid-template-columns: 1fr;
+  }
+
+  .shieldthread-rail {
+    border-left: 0;
+    border-top: 1px solid #d6d9de;
+    max-height: 48vh;
+  }
+
+  .shieldthread-canvas {
+    height: 220px;
+  }
+
+  .shieldthread-game-help {
+    flex-direction: column;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shieldthread-progress-fill,
+  .shieldthread-button,
+  .shieldthread-close,
+  .shieldthread-row-risk {
+    transition: none;
+  }
+}

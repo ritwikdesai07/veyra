@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ShieldThread</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="popup">
+      <header>
+        <div class="brand-mark">ST</div>
+        <div>
+          <h1>ShieldThread</h1>
+          <p>Protection On</p>
+        </div>
+      </header>
+
+      <section class="status-card">
+        <strong>You are protected</strong>
+        <p>Emails, documents, downloads, and websites are scanned for spoofing and phishing signals.</p>
+      </section>
+
+      <section>
+        <div class="section-title">
+          <h2>Recent Activity</h2>
+          <span id="scan-count">0 scans</span>
+        </div>
+        <div id="activity-list" class="activity-list"></div>
+      </section>
+
+      <section class="settings">
+        <label>
+          <span>Ad-supported AI mode</span>
+          <input id="ad-mode" type="checkbox">
+        </label>
+        <p>Prototype setting only. A real product should avoid showing ads on high-risk security decisions.</p>
+      </section>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

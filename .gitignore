@@ -1,0 +1,16 @@
+# Local agent/plugin files
+.codex/
+.agents/
+
+# Generated verification artifacts
+tmp/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.log
+
+# Dependencies/build outputs if this grows into a packaged app
+node_modules/
+dist/
+build/

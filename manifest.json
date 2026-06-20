@@ -1,0 +1,59 @@
+{
+  "manifest_version": 3,
+  "name": "ShieldThread",
+  "description": "Explainable phishing, spoofing, document, and website risk reports before users proceed.",
+  "version": "0.1.0",
+  "minimum_chrome_version": "116",
+  "action": {
+    "default_title": "ShieldThread",
+    "default_popup": "src/popup.html"
+  },
+  "background": {
+    "service_worker": "src/service_worker.js"
+  },
+  "permissions": [
+    "downloads",
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*",
+    "file:///*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://mail.google.com/*"],
+      "js": ["src/risk_engine.js", "src/content_gmail.js"],
+      "css": ["src/content.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://docs.google.com/*",
+        "https://drive.google.com/*",
+        "file:///*"
+      ],
+      "js": ["src/risk_engine.js", "src/content_documents.js"],
+      "css": ["src/content.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "exclude_matches": [
+        "https://mail.google.com/*",
+        "https://docs.google.com/*",
+        "https://drive.google.com/*"
+      ],
+      "js": ["src/risk_engine.js", "src/report_ui.js", "src/content_web.js"],
+      "css": ["src/content.css"],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["src/content.css"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
