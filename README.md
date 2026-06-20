@@ -39,6 +39,20 @@ $env:SHIELDTHREAD_MODEL_PATH="C:\Users\ritwi_m2ofaxd\OneDrive\Documents\Coding\N
 python ml\url_model_server.py
 ```
 
+## AI/ML layers now wired
+
+The prototype now includes local-first AI plumbing for URL features, email intent classification, sender anomaly memory, website DOM/form features, document/attachment patterns, evidence-bound AI risk summaries, and user feedback labels.
+
+Read the implementation map in `docs/ai-implementation.md`.
+
+Optional local AI endpoint:
+
+```text
+POST http://127.0.0.1:8766/analyze
+```
+
+The extension sends redacted features, finding IDs, categories, and host metadata to that endpoint. It does not send raw email or document text to the optional AI endpoint.
+
 ## Competitive landscape
 
 Products already exist in this neighborhood:

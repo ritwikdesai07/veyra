@@ -1,9 +1,12 @@
 importScripts("risk_engine.js");
 
 const ACTIVITY_KEY = "shieldThreadRecentActivity";
+const FEEDBACK_KEY = "shieldThreadFeedback";
 const LOCAL_MODEL_ENDPOINT = "http://127.0.0.1:8765/score";
+const LOCAL_AI_ENDPOINT = "http://127.0.0.1:8766/analyze";
 const SAFE_HOSTS_KEY = "shieldThreadSafeHosts";
 const SENDER_MEMORY_KEY = "shieldThreadSenderMemory";
+const SENDER_PROFILE_KEY = "shieldThreadSenderProfiles";
 const SAFE_HOST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const SENDER_MEMORY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -20,6 +23,16 @@ async function getSafeHosts() {
 async function getSenderMemory() {
   const data = await chrome.storage.local.get({ [SENDER_MEMORY_KEY]: {} });
   return data[SENDER_MEMORY_KEY];
+}
+
+async function getSenderProfiles() {
+  const data = await chrome.storage.local.get({ [SENDER_PROFILE_KEY]: {} });
+  return data[SENDER_PROFILE_KEY];
+}
+
+async function getFeedback() {
+  const data = await chrome.storage.local.get({ [FEEDBACK_KEY]: [] });
+  return data[FEEDBACK_KEY];
 }
 
 async function saveReport(report) {
@@ -65,6 +78,10 @@ function senderKeyFor(value) {
   return domain.replace(/^www\./, "");
 }
 
+function senderDomainFor(value) {
+  return senderKeyFor(value).split("@").pop() || "";
+}
+
 function isEmailSurface(surface) {
   return surface === "email" || surface === "email-preview";
 }
@@ -75,6 +92,21 @@ function isFreshTrustedSender(entry) {
 
 function hasLinkOrAttachmentRisk(report) {
   return report.findings.some((finding) => ["Links", "URL spoofing", "Brand impersonation", "Attachments", "ML URL model"].includes(finding.category));
+}
+
+function addServiceFinding(report, finding) {
+  const key = `${finding.id}|${finding.where}|${finding.detail}`;
+  if (report.findings.some((existing) => `${existing.id}|${existing.where}|${existing.detail}` === key)) return;
+  report.findings.push({
+    severity: finding.severity || "medium",
+    points: finding.points || 8,
+    category: finding.category,
+    where: finding.where,
+    detail: finding.detail,
+    advice: finding.advice,
+    source: finding.source || "ShieldThread AI layer",
+    id: finding.id
+  });
 }
 
 function frameworkForEmail(report, payload, senderMemoryEntry) {
@@ -231,6 +263,149 @@ async function enrichReportWithLocalModel(report, payload, fallbackUrl) {
   return report;
 }
 
+function redactedPayloadForAi(payload, report) {
+  return {
+    surface: payload?.surface || report.surface,
+    title: String(payload?.title || report.title || "").slice(0, 160),
+    host: hostFor(payload?.url || report.url || ""),
+    features: report.features || self.ShieldThreadRiskEngine.extractSurfaceFeatures(payload || {}),
+    findingIds: report.findings.map((finding) => finding.id).slice(0, 20),
+    findingCategories: report.findings.map((finding) => finding.category).slice(0, 20)
+  };
+}
+
+async function fetchLocalAiAnalysis(payload, report) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 1200);
+  try {
+    const response = await fetch(LOCAL_AI_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(redactedPayloadForAi(payload, report)),
+      signal: controller.signal
+    });
+    if (!response.ok) return null;
+    return await response.json();
+  } catch (_error) {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function confidenceForReport(report) {
+  const count = report.findings.length;
+  const hasMl = Boolean(report.ml?.results?.length);
+  const highCount = report.findings.filter((finding) => finding.severity === "high").length;
+  if (hasMl && count >= 2) return "high";
+  if (highCount || count >= 3) return "medium-high";
+  if (count >= 1) return "medium";
+  return "low";
+}
+
+function buildAiNarrative(report) {
+  const top = report.findings.slice(0, 4);
+  const riskDrivers = top.map((finding) => `${finding.category} at ${finding.where}`);
+  const impact = report.level === "dangerous"
+    ? "This can lead to credential theft, payment fraud, malware execution, or data exposure if the user proceeds."
+    : report.level === "moderate"
+      ? "This may impact the user if the request is unexpected or the domain cannot be independently verified."
+      : "No strong evidence suggests immediate data compromise, but sensitive actions should still be verified.";
+  const summary = top.length
+    ? `ShieldThread found ${top.length} main signal${top.length === 1 ? "" : "s"}: ${riskDrivers.join("; ")}.`
+    : "ShieldThread did not find strong phishing or spoofing evidence in the available page data.";
+
+  return {
+    mode: "evidence-bound local report",
+    summary,
+    riskDrivers,
+    possibleImpact: impact,
+    advice: report.recommendation,
+    confidence: confidenceForReport(report),
+    evidenceIds: top.map((finding) => finding.id)
+  };
+}
+
+async function enrichReportWithAi(report, payload) {
+  const localAi = await fetchLocalAiAnalysis(payload, report);
+  if (localAi?.findings?.length) {
+    localAi.findings.slice(0, 8).forEach((finding) => addServiceFinding(report, {
+      id: finding.id || "local-ai-finding",
+      severity: finding.severity || "medium",
+      points: Number(finding.points || 12),
+      category: finding.category || "AI model",
+      where: finding.where || hostFor(payload?.url || report.url),
+      detail: finding.detail || "Local AI model returned an additional risk signal.",
+      advice: finding.advice || "Verify this item before proceeding.",
+      source: localAi.model || "Local ShieldThread AI endpoint"
+    }));
+    recomputeReportRisk(report);
+  }
+
+  report.ai = localAi?.narrative || buildAiNarrative(report);
+  report.model = `${report.model} + AI feature/report layer v0.4`;
+  return report;
+}
+
+function senderProfileKey(payload) {
+  return senderKeyFor(payload?.sender || "");
+}
+
+async function enrichReportWithSenderAnomaly(report, payload, senderMemoryEntry) {
+  if (!isEmailSurface(payload?.surface)) return report;
+  const key = senderProfileKey(payload);
+  if (!key) return report;
+
+  const profiles = await getSenderProfiles();
+  const profile = profiles[key];
+  const domain = senderDomainFor(payload.sender);
+  const domainProfiles = Object.values(profiles).filter((entry) => entry.domain === domain);
+  const linkCount = Array.isArray(payload.links) ? payload.links.length : 0;
+  const attachmentCount = Array.isArray(payload.attachments) ? payload.attachments.length : 0;
+
+  if (!profile && (linkCount || attachmentCount) && !isFreshTrustedSender(senderMemoryEntry)) {
+    addServiceFinding(report, {
+      id: "new-sender-with-risk-objects",
+      severity: "medium",
+      points: 14,
+      category: "Sender relationship model",
+      where: key,
+      detail: "This sender has no local trust history and the message contains links or attachments.",
+      advice: "Verify the sender before opening links or files.",
+      source: "ShieldThread sender anomaly model"
+    });
+  }
+
+  if (senderMemoryEntry?.status === "suspicious") {
+    addServiceFinding(report, {
+      id: "previously-suspicious-sender",
+      severity: "high",
+      points: 22,
+      category: "Sender relationship model",
+      where: key,
+      detail: "This sender was previously associated with a risky ShieldThread scan.",
+      advice: "Use a separate trusted channel before responding or clicking.",
+      source: "ShieldThread sender anomaly model"
+    });
+  }
+
+  if (!profile && domainProfiles.length >= 3 && report.level !== "safe") {
+    addServiceFinding(report, {
+      id: "new-address-on-known-domain-risky",
+      severity: "medium",
+      points: 12,
+      category: "Sender relationship model",
+      where: domain,
+      detail: "The domain is familiar, but this specific sender address is new and the message has risk signals.",
+      advice: "Confirm whether this sender address is expected.",
+      source: "ShieldThread sender graph model"
+    });
+  }
+
+  recomputeReportRisk(report);
+  return report;
+}
+
 async function buildSurfaceReport(payload, options = {}) {
   const surface = payload?.surface || "website";
   if (isEmailSurface(surface)) {
@@ -244,13 +419,17 @@ async function buildSurfaceReport(payload, options = {}) {
 
     const report = self.ShieldThreadRiskEngine.analyzeSurface(payload);
     await enrichReportWithLocalModel(report, payload, payload.url);
+    await enrichReportWithSenderAnomaly(report, payload, senderMemoryEntry);
     report.framework = frameworkForEmail(report, payload, senderMemoryEntry);
+    await enrichReportWithAi(report, payload);
     if (!options.preview) await updateSenderMemory(report, payload);
+    if (!options.preview) await updateSenderProfile(report, payload);
     return report;
   }
 
   const report = self.ShieldThreadRiskEngine.analyzeSurface(payload);
-  return enrichReportWithLocalModel(report, payload, payload.url);
+  await enrichReportWithLocalModel(report, payload, payload.url);
+  return enrichReportWithAi(report, payload);
 }
 
 async function updateSenderMemory(report, payload) {
@@ -277,6 +456,28 @@ async function updateSenderMemory(report, payload) {
     };
   }
   await chrome.storage.local.set({ [SENDER_MEMORY_KEY]: memory });
+}
+
+async function updateSenderProfile(report, payload) {
+  if (!isEmailSurface(payload?.surface)) return;
+  const key = senderProfileKey(payload);
+  if (!key) return;
+
+  const profiles = await getSenderProfiles();
+  const previous = profiles[key] || { count: 0, safeCount: 0, riskyCount: 0 };
+  profiles[key] = {
+    ...previous,
+    count: Number(previous.count || 0) + 1,
+    safeCount: Number(previous.safeCount || 0) + (report.level === "safe" ? 1 : 0),
+    riskyCount: Number(previous.riskyCount || 0) + (report.level !== "safe" ? 1 : 0),
+    domain: senderDomainFor(payload.sender),
+    lastSubject: report.title || "",
+    lastLevel: report.level,
+    lastSeenAt: Date.now(),
+    averageLinks: Math.round(((Number(previous.averageLinks || 0) * Number(previous.count || 0)) + (payload.links?.length || 0)) / (Number(previous.count || 0) + 1)),
+    averageAttachments: Math.round(((Number(previous.averageAttachments || 0) * Number(previous.count || 0)) + (payload.attachments?.length || 0)) / (Number(previous.count || 0) + 1))
+  };
+  await chrome.storage.local.set({ [SENDER_PROFILE_KEY]: profiles });
 }
 
 async function updateSafetyMemory(report) {
@@ -394,8 +595,41 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message?.type === "SAVE_FEEDBACK") {
+    saveFeedback(message.payload || {}).then(sendResponse);
+    return true;
+  }
+
+  if (message?.type === "GET_FEEDBACK_STATS") {
+    getFeedback().then((feedback) => sendResponse({
+      count: feedback.length,
+      phishing: feedback.filter((item) => item.label === "phishing").length,
+      safe: feedback.filter((item) => item.label === "safe").length,
+      tooStrict: feedback.filter((item) => item.label === "too-strict").length
+    }));
+    return true;
+  }
+
   return false;
 });
+
+async function saveFeedback(payload) {
+  const feedback = await getFeedback();
+  const item = {
+    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    reportId: payload.reportId || "",
+    label: payload.label || "unknown",
+    surface: payload.surface || "",
+    level: payload.level || "",
+    score: Number(payload.score || 0),
+    findingIds: Array.isArray(payload.findingIds) ? payload.findingIds.slice(0, 20) : [],
+    createdAt: new Date().toISOString(),
+    source: "user-feedback-loop"
+  };
+  const next = [item, ...feedback].slice(0, 500);
+  await chrome.storage.local.set({ [FEEDBACK_KEY]: next });
+  return { ok: true, item };
+}
 
 chrome.downloads.onChanged.addListener(async (delta) => {
   if (!delta.state || delta.state.current !== "complete") return;
@@ -412,9 +646,17 @@ chrome.downloads.onChanged.addListener(async (delta) => {
     text: `${download.mime || ""} ${download.danger || ""}`
   });
 
-  await saveReport(await enrichReportWithLocalModel(report, {
+  await enrichReportWithLocalModel(report, {
     surface: "download",
     url: download.finalUrl || download.url || "",
     links: [download.finalUrl || download.url || ""]
-  }, download.finalUrl || download.url || ""));
+  }, download.finalUrl || download.url || "");
+  await saveReport(await enrichReportWithAi(report, {
+    surface: "download",
+    title: download.filename,
+    url: download.finalUrl || download.url || "",
+    links: [download.finalUrl || download.url || ""],
+    attachments: [download.filename],
+    text: `${download.mime || ""} ${download.danger || ""}`
+  }));
 });

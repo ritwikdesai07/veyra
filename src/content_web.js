@@ -37,10 +37,25 @@ function shieldThreadAskWebsiteGateDecision() {
 }
 
 function shieldThreadCollectPage() {
+  const currentHost = location.hostname.replace(/^www\./, "").toLowerCase();
   const links = [...document.links].map((link) => ({
     href: link.href,
     text: link.innerText || link.textContent || link.getAttribute("aria-label") || link.href
   }));
+  const linkHosts = links.map((link) => {
+    try {
+      return new URL(link.href).hostname.replace(/^www\./, "").toLowerCase();
+    } catch (_error) {
+      return "";
+    }
+  }).filter(Boolean);
+  const scriptHosts = [...document.scripts].map((script) => {
+    try {
+      return script.src ? new URL(script.src).hostname.replace(/^www\./, "").toLowerCase() : "";
+    } catch (_error) {
+      return "";
+    }
+  }).filter(Boolean);
   const attachments = links
     .map((link) => link.href)
     .filter((href) => /\.(pdf|docx?|xlsx?|pptx?|zip|exe|js|scr|msi|docm|xlsm|html?)(\?|#|$)/i.test(href));
@@ -48,6 +63,7 @@ function shieldThreadCollectPage() {
     action: form.action || location.href,
     method: form.method || "get",
     hasPassword: Boolean(form.querySelector("input[type='password']")),
+    hiddenCount: form.querySelectorAll("input[type='hidden']").length,
     inputNames: [...form.querySelectorAll("input, textarea, select")]
       .map((input) => input.name || input.id || input.type || "")
       .filter(Boolean)
@@ -62,7 +78,10 @@ function shieldThreadCollectPage() {
     text,
     links,
     attachments,
-    forms
+    forms,
+    externalHostCount: new Set(linkHosts.filter((host) => host && host !== currentHost)).size,
+    scriptHostCount: new Set(scriptHosts.filter((host) => host && host !== currentHost)).size,
+    iframeCount: document.querySelectorAll("iframe").length
   };
 }
 
@@ -72,34 +91,48 @@ function shieldThreadBuildGate() {
   gate.innerHTML = `
     <main class="shieldthread-gate-main">
       <div class="shieldthread-wait-card">
-        <div class="shieldthread-mark">ST</div>
-        <h1>ShieldThread is checking this page</h1>
-        <p>Scanning visible content, links, forms, and downloadable files before this site can touch your data.</p>
+        <div class="shieldthread-arcade-top">
+          <div class="shieldthread-mark">ST</div>
+          <div>
+            <span class="shieldthread-kicker">Live scan mode</span>
+            <h1>Checking this site before data leaves</h1>
+          </div>
+        </div>
+        <p>ShieldThread is inspecting the page, forms, outbound links, and downloadable files.</p>
+
+        <div class="shieldthread-scan-grid" aria-hidden="true">
+          <span>URL</span>
+          <span>DOM</span>
+          <span>LINKS</span>
+          <span>FILES</span>
+        </div>
 
         <div class="shieldthread-game" tabindex="0">
           <div class="shieldthread-game-head">
-            <span>Patch Runner</span>
+            <span>Packet Defender</span>
             <div class="shieldthread-game-stats">
-              <b>Score <span id="shieldthread-score">0</span></b>
-              <b>Lives <span id="shieldthread-lives">3</span></b>
+              <b>DATA <span id="shieldthread-score">0</span></b>
+              <b>SHIELD <span id="shieldthread-lives">3</span></b>
             </div>
           </div>
-          <canvas id="shieldthread-game-canvas" class="shieldthread-canvas" width="720" height="300" aria-label="Patch Runner game"></canvas>
+          <div class="shieldthread-game-stage">
+            <canvas id="shieldthread-game-canvas" class="shieldthread-canvas" width="720" height="300" aria-label="Packet Defender game"></canvas>
+          </div>
           <div class="shieldthread-game-help">
-            <span>Move with WASD or arrows</span>
-            <span>Space clears nearby phish hooks</span>
+            <span>PACKETS CLEAN</span>
+            <span>PULSE READY</span>
           </div>
         </div>
 
         <div class="shieldthread-ad-slot shieldthread-ad-slot-main" aria-label="Advertisement placeholder">
           <span>Ad</span>
-          <strong>Sponsored security tip</strong>
-          <p>Place a privacy-safe sponsor here while the scan runs. Never target ads from email or document content.</p>
+          <strong>Privacy-safe sponsor board</strong>
+          <p>Broad security sponsorship only. No ad targeting from page contents.</p>
         </div>
 
         <div class="shieldthread-progress">
           <div class="shieldthread-progress-labels">
-            <span>Scanning page, links, forms, and downloads...</span>
+            <span>Threat model compiling</span>
             <b id="shieldthread-progress-label">18%</b>
           </div>
           <div class="shieldthread-progress-track"><div class="shieldthread-progress-fill" id="shieldthread-progress-fill"></div></div>
@@ -108,11 +141,11 @@ function shieldThreadBuildGate() {
     </main>
     <aside class="shieldthread-rail">
       <div class="shieldthread-report-title"><h2>ShieldThread Risk Report</h2></div>
-      <div class="shieldthread-finding"><strong>Scan in progress</strong><p>Report will appear when the first-pass analysis finishes.</p></div>
+      <div class="shieldthread-finding"><strong>Scan in progress</strong><p>Awaiting first-pass risk report.</p></div>
       <div class="shieldthread-ad-slot shieldthread-ad-slot-rail" aria-label="Advertisement placeholder">
         <span>Ad</span>
         <strong>Security sponsor slot</strong>
-        <p>Use broad contextual sponsorship only. Disable it for dangerous reports.</p>
+        <p>Disabled on dangerous reports.</p>
       </div>
     </aside>
   `;
@@ -156,6 +189,7 @@ function shieldThreadStartGame(canvas) {
     canvas.width = Math.floor(game.width * game.dpr);
     canvas.height = Math.floor(game.height * game.dpr);
     ctx.setTransform(game.dpr, 0, 0, game.dpr, 0, 0);
+    ctx.imageSmoothingEnabled = false;
   }
 
   function spawnThreat() {
@@ -177,14 +211,17 @@ function shieldThreadStartGame(canvas) {
     });
   }
 
-  function drawRoundedRect(x, y, width, height, radius) {
-    ctx.beginPath();
-    ctx.moveTo(x + radius, y);
-    ctx.arcTo(x + width, y, x + width, y + height, radius);
-    ctx.arcTo(x + width, y + height, x, y + height, radius);
-    ctx.arcTo(x, y + height, x, y, radius);
-    ctx.arcTo(x, y, x + width, y, radius);
-    ctx.closePath();
+  function drawPixelRect(x, y, width, height, color, outline) {
+    const px = Math.round(x);
+    const py = Math.round(y);
+    const pw = Math.round(width);
+    const ph = Math.round(height);
+    if (outline) {
+      ctx.fillStyle = outline;
+      ctx.fillRect(px - 2, py - 2, pw + 4, ph + 4);
+    }
+    ctx.fillStyle = color;
+    ctx.fillRect(px, py, pw, ph);
   }
 
   function circleHit(a, b) {
@@ -293,45 +330,50 @@ function shieldThreadStartGame(canvas) {
   function render() {
     const { width, height } = game;
     ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = "#f8fafc";
+    ctx.fillStyle = "#071014";
     ctx.fillRect(0, 0, width, height);
 
-    ctx.strokeStyle = "#dde5ee";
+    ctx.strokeStyle = "rgba(14, 165, 233, 0.16)";
     ctx.lineWidth = 1;
-    for (let x = (game.frame % 40) - 40; x < width; x += 40) {
+    for (let x = (game.frame % 48) - 48; x < width; x += 24) {
       ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x, height);
       ctx.stroke();
     }
+    for (let y = 0; y < height; y += 24) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+      ctx.stroke();
+    }
 
-    ctx.fillStyle = "#e8f3ee";
-    drawRoundedRect(18, 24, 150, height - 48, 14);
-    ctx.fill();
-    ctx.fillStyle = "#475569";
-    ctx.font = "12px Segoe UI, sans-serif";
-    ctx.fillText("Protected zone", 36, 48);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.42)";
+    for (let i = 0; i < 28; i += 1) {
+      const sx = (i * 97 + game.frame * 0.45) % width;
+      const sy = (i * 43) % height;
+      ctx.fillRect(Math.floor(sx), Math.floor(sy), 2, 2);
+    }
+
+    drawPixelRect(18, 28, 146, height - 56, "rgba(34, 197, 94, 0.12)", "#22c55e");
+    ctx.fillStyle = "#86efac";
+    ctx.font = "bold 12px Consolas, monospace";
+    ctx.fillText("SAFE ZONE", 38, 56);
+    for (let y = 78; y < height - 34; y += 28) {
+      drawPixelRect(44, y, 92, 8, "rgba(34, 197, 94, 0.36)");
+    }
 
     game.packets.forEach((packet) => {
-      ctx.fillStyle = "#16a34a";
-      drawRoundedRect(packet.x - 9, packet.y - 7, 18, 14, 4);
-      ctx.fill();
-      ctx.fillStyle = "#dcfce7";
-      ctx.fillRect(packet.x - 4, packet.y - 2, 8, 3);
+      drawPixelRect(packet.x - 10, packet.y - 8, 20, 16, "#22c55e", "#bbf7d0");
+      drawPixelRect(packet.x - 5, packet.y - 2, 10, 4, "#052e16");
     });
 
     game.threats.forEach((threat) => {
-      ctx.fillStyle = "#fee2e2";
-      ctx.beginPath();
-      ctx.arc(threat.x, threat.y, threat.r + 5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = "#dc2626";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(threat.x, threat.y, threat.r, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.fillStyle = "#991b1b";
-      ctx.font = "10px Segoe UI, sans-serif";
+      const size = threat.r * 2;
+      drawPixelRect(threat.x - threat.r, threat.y - threat.r, size, size, "#ef4444", "#fecaca");
+      drawPixelRect(threat.x - threat.r + 5, threat.y - 2, size - 10, 4, "#7f1d1d");
+      ctx.fillStyle = "#fff7ed";
+      ctx.font = "bold 10px Consolas, monospace";
       ctx.textAlign = "center";
       ctx.fillText("!", threat.x, threat.y + 4);
     });
@@ -339,45 +381,34 @@ function shieldThreadStartGame(canvas) {
 
     const player = game.player;
     if (player.pulse > 0) {
-      ctx.strokeStyle = "rgba(21, 128, 61, 0.28)";
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.arc(player.x, player.y, 76 - player.pulse * 0.05, 0, Math.PI * 2);
-      ctx.stroke();
+      const pulseSize = 136 - player.pulse * 0.1;
+      ctx.strokeStyle = "rgba(34, 197, 94, 0.34)";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(player.x - pulseSize / 2, player.y - pulseSize / 2, pulseSize, pulseSize);
     }
-    ctx.fillStyle = "#dcfce7";
-    ctx.strokeStyle = "#15803d";
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(player.x, player.y - 22);
-    ctx.lineTo(player.x + 20, player.y - 10);
-    ctx.lineTo(player.x + 16, player.y + 18);
-    ctx.lineTo(player.x, player.y + 26);
-    ctx.lineTo(player.x - 16, player.y + 18);
-    ctx.lineTo(player.x - 20, player.y - 10);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = "#14532d";
-    ctx.font = "bold 13px Segoe UI, sans-serif";
+    drawPixelRect(player.x - 18, player.y - 18, 36, 36, "#22c55e", "#ecfccb");
+    drawPixelRect(player.x - 10, player.y - 28, 20, 10, "#0ea5e9", "#bae6fd");
+    drawPixelRect(player.x - 10, player.y + 18, 20, 10, "#0ea5e9", "#bae6fd");
+    drawPixelRect(player.x - 7, player.y - 7, 14, 14, "#052e16");
+    ctx.fillStyle = "#bbf7d0";
+    ctx.font = "bold 10px Consolas, monospace";
     ctx.textAlign = "center";
-    ctx.fillText("ST", player.x, player.y + 5);
+    ctx.fillText("ST", player.x, player.y + 4);
     ctx.textAlign = "left";
 
     game.sparks.forEach((spark) => {
       ctx.globalAlpha = Math.max(0, spark.life / 28);
-      ctx.fillStyle = spark.color;
-      ctx.fillRect(spark.x, spark.y, 3, 3);
+      drawPixelRect(spark.x, spark.y, 4, 4, spark.color);
       ctx.globalAlpha = 1;
     });
 
     if (game.lives === 0) {
-      ctx.fillStyle = "rgba(15, 23, 42, 0.72)";
+      ctx.fillStyle = "rgba(3, 7, 18, 0.82)";
       ctx.fillRect(0, 0, width, height);
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "bold 20px Segoe UI, sans-serif";
+      ctx.fillStyle = "#facc15";
+      ctx.font = "bold 18px Consolas, monospace";
       ctx.textAlign = "center";
-      ctx.fillText("Shield rebooting...", width / 2, height / 2);
+      ctx.fillText("SHIELD REBOOTING", width / 2, height / 2);
       ctx.textAlign = "left";
     }
   }

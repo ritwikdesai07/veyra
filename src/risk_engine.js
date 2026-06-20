@@ -25,6 +25,8 @@
   const EXECUTABLE_EXTENSIONS = [".exe", ".scr", ".bat", ".cmd", ".js", ".vbs", ".ps1", ".msi", ".jar", ".iso", ".img", ".lnk", ".hta"];
   const RISKY_ATTACHMENT_EXTENSIONS = [".html", ".htm", ".svg", ".zip", ".rar", ".7z", ".one"];
   const OFFICE_MACRO_EXTENSIONS = [".docm", ".xlsm", ".pptm"];
+  const PAYMENT_FIELD_NAMES = /\b(card|cc|cvv|cvc|expiry|routing|account|iban|swift|payment|billing)\b/i;
+  const SECRET_FIELD_NAMES = /\b(password|passcode|otp|mfa|2fa|secret|seed|private|recovery)\b/i;
 
   const CONTENT_RULES = [
     {
@@ -103,6 +105,33 @@
       detail: "The content combines a phone number with urgent billing language.",
       advice: "Use a known official support number instead of the number in the message.",
       source: "MITRE T1566.004"
+    }
+  ];
+
+  const INTENT_RULES = [
+    {
+      id: "intent-credential-theft",
+      label: "credential theft",
+      weight: 26,
+      regexes: [/\b(sign in|login|verify|confirm|unlock|restore|update)\b/i, /\b(password|mfa|2fa|otp|account|mailbox)\b/i]
+    },
+    {
+      id: "intent-bec-payment",
+      label: "business email compromise",
+      weight: 25,
+      regexes: [/\b(invoice|payment|wire|ach|payroll|bank|vendor)\b/i, /\b(change|update|overdue|urgent|today|immediately)\b/i]
+    },
+    {
+      id: "intent-malware-delivery",
+      label: "malware delivery",
+      weight: 24,
+      regexes: [/\b(download|open|view|enable|extract)\b/i, /\b(attachment|document|invoice|archive|protected|encrypted|macro|content)\b/i]
+    },
+    {
+      id: "intent-data-access",
+      label: "data access request",
+      weight: 18,
+      regexes: [/\b(grant|authorize|allow|consent|permission)\b/i, /\b(files|email|drive|calendar|contacts|oauth|app)\b/i]
     }
   ];
 
@@ -220,6 +249,99 @@
     return {
       href: link && (link.href || link.url) ? String(link.href || link.url) : "",
       text: link && link.text ? String(link.text) : ""
+    };
+  }
+
+  function uniqueCount(values) {
+    return new Set(values.filter(Boolean)).size;
+  }
+
+  function extractUrlFeatures(value) {
+    const url = safeUrl(value);
+    if (!url) {
+      return {
+        valid: false,
+        urlLength: String(value || "").length,
+        depth: 0,
+        hasHttps: false,
+        hasAtSign: /@/.test(String(value || "")),
+        isIpHost: false,
+        isShortener: false,
+        riskyTld: false,
+        hasPunycode: false,
+        brandImpersonation: false,
+        redirectParamCount: 0
+      };
+    }
+
+    const host = normalizeHost(url.hostname);
+    const brand = brandForHost(host);
+    return {
+      valid: true,
+      urlLength: url.href.length,
+      depth: url.pathname.split("/").filter(Boolean).length,
+      hasHttps: url.protocol === "https:",
+      hasAtSign: Boolean(url.username || url.password || /@/.test(url.href.replace(`${url.protocol}//`, "").split(/[/?#]/)[0])),
+      isIpHost: /^\d{1,3}(\.\d{1,3}){3}$/.test(host),
+      isShortener: SHORTENERS.has(host),
+      riskyTld: RISKY_TLDS.has(getTld(host)),
+      hasPunycode: host.includes("xn--"),
+      brandImpersonation: Boolean(brand && !brand.official),
+      redirectParamCount: REDIRECT_PARAMS.filter((param) => url.searchParams.has(param)).length
+    };
+  }
+
+  function extractTextFeatures(text) {
+    const normalized = normalizeText(text);
+    const words = normalized ? normalized.split(/\s+/) : [];
+    return {
+      charCount: normalized.length,
+      wordCount: words.length,
+      urgencyHits: (normalized.match(/\b(urgent|immediately|final notice|last warning|expires|suspended|within 24 hours)\b/gi) || []).length,
+      credentialHits: (normalized.match(/\b(password|mfa|2fa|otp|seed phrase|private key|login|verify your account)\b/gi) || []).length,
+      paymentHits: (normalized.match(/\b(invoice|wire transfer|gift card|routing number|bank account|ach|swift|payroll)\b/gi) || []).length,
+      attachmentLureHits: (normalized.match(/\b(enable macros|enable editing|protected document|download|open attachment)\b/gi) || []).length,
+      phoneCount: (normalized.match(/\+?1?[\s.-]?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/g) || []).length
+    };
+  }
+
+  function extractSurfaceFeatures(input) {
+    const links = Array.isArray(input.links) ? input.links.map(linkParts).filter((link) => link.href) : [];
+    const hosts = links.map((link) => getHost(link.href)).filter(Boolean);
+    const urlFeatures = extractUrlFeatures(input.url || "");
+    const textFeatures = extractTextFeatures(input.text || "");
+    const forms = Array.isArray(input.forms) ? input.forms : [];
+    const formFields = forms.flatMap((form) => form.inputNames || []);
+
+    return {
+      url: urlFeatures,
+      text: textFeatures,
+      links: {
+        count: links.length,
+        uniqueHostCount: uniqueCount(hosts.map(rootDomain)),
+        externalHostCount: Number(input.externalHostCount || 0),
+        redirectLikeCount: links.filter((link) => extractUrlFeatures(link.href).redirectParamCount > 0).length,
+        shortenerCount: links.filter((link) => extractUrlFeatures(link.href).isShortener).length,
+        brandImpersonationCount: links.filter((link) => extractUrlFeatures(link.href).brandImpersonation).length
+      },
+      forms: {
+        count: forms.length,
+        passwordFormCount: forms.filter((form) => form.hasPassword).length,
+        paymentFieldCount: formFields.filter((name) => PAYMENT_FIELD_NAMES.test(name)).length,
+        secretFieldCount: formFields.filter((name) => SECRET_FIELD_NAMES.test(name)).length,
+        hiddenFieldCount: forms.reduce((sum, form) => sum + Number(form.hiddenCount || 0), 0)
+      },
+      attachments: {
+        count: Array.isArray(input.attachments) ? input.attachments.length : 0,
+        executableCount: (input.attachments || []).filter((name) => EXECUTABLE_EXTENSIONS.some((ext) => String(name).toLowerCase().endsWith(ext))).length,
+        macroCount: (input.attachments || []).filter((name) => OFFICE_MACRO_EXTENSIONS.some((ext) => String(name).toLowerCase().endsWith(ext))).length,
+        archiveCount: (input.attachments || []).filter((name) => /\.(zip|rar|7z|iso|img)$/i.test(String(name))).length
+      },
+      page: {
+        scriptHostCount: Number(input.scriptHostCount || 0),
+        iframeCount: Number(input.iframeCount || 0),
+        loginKeywordPresent: /\b(sign in|login|password|account)\b/i.test(`${input.title || ""} ${String(input.text || "").slice(0, 2000)}`)
+      }
     };
   }
 
@@ -468,6 +590,21 @@
       if (rule.regex.test(normalized)) addFinding(findings, rule);
     });
 
+    INTENT_RULES.forEach((rule) => {
+      if (rule.regexes.every((regex) => regex.test(normalized))) {
+        addFinding(findings, {
+          id: rule.id,
+          severity: severityFromPoints(rule.weight),
+          points: rule.weight,
+          category: "AI content intent",
+          where: rule.label,
+          detail: `Local text-intent classifier matched a ${rule.label} pattern.`,
+          advice: "Treat the message intent as suspicious unless verified outside this flow.",
+          source: "ShieldThread local NLP-style intent model"
+        });
+      }
+    });
+
     const hasLinkAction = /\b(click|open|view|download|sign in|login|verify|confirm|update)\b/i.test(normalized);
     const hasSensitive = /\b(password|mfa|2fa|bank|routing|credit card|ssn|social security|tax id)\b/i.test(normalized);
     if (hasLinkAction && hasSensitive) {
@@ -622,6 +759,33 @@
           source: "MITRE T1566.002"
         });
       }
+
+      const fields = (form.inputNames || []).join(" ");
+      if (PAYMENT_FIELD_NAMES.test(fields) && !/checkout|billing|pay|cart/i.test(`${input.title || ""} ${input.url || ""}`)) {
+        addFinding(findings, {
+          id: "payment-fields-unexpected-context",
+          severity: "medium",
+          points: 17,
+          category: "Website pattern model",
+          where: actionHost || pageHost || "Form fields",
+          detail: "The page contains payment-like fields outside an obvious checkout context.",
+          advice: "Avoid entering payment data unless you intentionally started a trusted checkout.",
+          source: "ShieldThread DOM/form feature model"
+        });
+      }
+
+      if (SECRET_FIELD_NAMES.test(fields) && !form.hasPassword) {
+        addFinding(findings, {
+          id: "secret-fields-without-password-type",
+          severity: "medium",
+          points: 15,
+          category: "Website pattern model",
+          where: actionHost || pageHost || "Form fields",
+          detail: "The form asks for secret-like values without using a normal password field.",
+          advice: "Do not enter recovery phrases, OTPs, or private keys into unexpected forms.",
+          source: "ShieldThread DOM/form feature model"
+        });
+      }
     });
   }
 
@@ -643,6 +807,50 @@
         });
       }
     });
+
+    const forms = Array.isArray(input.forms) ? input.forms : [];
+    if (forms.some((form) => form.hasPassword) && Number(input.externalHostCount || 0) > 12) {
+      addFinding(findings, {
+        id: "login-page-many-external-hosts",
+        severity: "medium",
+        points: 16,
+        category: "Website pattern model",
+        where: pageHost || "Current page",
+        detail: "A login-like page loads or links to many external domains.",
+        advice: "Verify the domain before entering credentials.",
+        source: "ShieldThread DOM/link graph model"
+      });
+    }
+  }
+
+  function analyzeDocumentPattern(input, findings) {
+    if (input.surface !== "document" && input.surface !== "download") return;
+    const features = extractSurfaceFeatures(input);
+    if (features.links.count >= 6 && features.text.urgencyHits + features.text.credentialHits > 0) {
+      addFinding(findings, {
+        id: "document-link-heavy-phish-pattern",
+        severity: "medium",
+        points: 17,
+        category: "Document pattern model",
+        where: input.title || "Document",
+        detail: "The document contains many links plus credential or urgency language.",
+        advice: "Do not follow links from the document until the sender and destination are verified.",
+        source: "ShieldThread document feature model"
+      });
+    }
+
+    if (features.attachments.archiveCount > 0 && features.text.attachmentLureHits > 0) {
+      addFinding(findings, {
+        id: "archive-plus-execution-lure",
+        severity: "high",
+        points: 24,
+        category: "Document pattern model",
+        where: input.title || "Document",
+        detail: "The file pattern combines archive content with instructions to open or enable content.",
+        advice: "Use a sandbox or trusted viewer before opening extracted files.",
+        source: "ShieldThread attachment feature model"
+      });
+    }
   }
 
   function scoreFindings(findings) {
@@ -673,6 +881,7 @@
     analyzeAttachments(payload.attachments || [], findings);
     analyzeForms(payload, findings);
     analyzePageIdentity(payload, findings);
+    analyzeDocumentPattern(payload, findings);
 
     const score = scoreFindings(findings);
     const level = levelForScore(score);
@@ -683,6 +892,7 @@
       url: payload.url || "",
       score,
       level,
+      features: extractSurfaceFeatures(payload),
       findings: findings.sort((a, b) => (b.points || 0) - (a.points || 0)),
       recommendation: recommendationFor(level),
       confirmationKeyword: level === "safe" ? "" : "I UNDERSTAND",
@@ -696,6 +906,8 @@
     normalizeText,
     levelForScore,
     getHost,
-    rootDomain
+    rootDomain,
+    extractSurfaceFeatures,
+    extractUrlFeatures
   };
 })(typeof globalThis !== "undefined" ? globalThis : typeof self !== "undefined" ? self : window);

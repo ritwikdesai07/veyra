@@ -8,7 +8,18 @@ function shieldThreadDocumentEscape(value) {
 }
 
 function shieldThreadCollectDocument() {
-  const links = [...document.links].map((link) => link.href);
+  const currentHost = location.hostname.replace(/^www\./, "").toLowerCase();
+  const links = [...document.links].map((link) => ({
+    href: link.href,
+    text: link.innerText || link.textContent || link.getAttribute("aria-label") || link.href
+  }));
+  const linkHosts = links.map((link) => {
+    try {
+      return new URL(link.href).hostname.replace(/^www\./, "").toLowerCase();
+    } catch (_error) {
+      return "";
+    }
+  }).filter(Boolean);
   const attachmentNames = [...document.querySelectorAll("[aria-label], [title], a[href]")]
     .map((node) => node.getAttribute("aria-label") || node.getAttribute("title") || node.textContent || "")
     .filter((text) => /\.(pdf|docx?|xlsx?|pptx?|zip|exe|js|scr|msi|docm|xlsm)(\s|$)/i.test(text))
@@ -20,7 +31,16 @@ function shieldThreadCollectDocument() {
     url: location.href,
     text: document.body ? document.body.innerText.slice(0, 20000) : document.title,
     links,
-    attachments: attachmentNames
+    attachments: attachmentNames,
+    externalHostCount: new Set(linkHosts.filter((host) => host && host !== currentHost)).size,
+    scriptHostCount: new Set([...document.scripts].map((script) => {
+      try {
+        return script.src ? new URL(script.src).hostname.replace(/^www\./, "").toLowerCase() : "";
+      } catch (_error) {
+        return "";
+      }
+    }).filter((host) => host && host !== currentHost)).size,
+    iframeCount: document.querySelectorAll("iframe").length
   };
 }
 
@@ -34,6 +54,7 @@ function shieldThreadRenderDocumentRail(report) {
     <div class="shieldthread-meter"><div style="width:${report.score}%;background:${color}"></div></div>
     <p style="margin:8px 0;color:${color};font-weight:800">${report.level.toUpperCase()} - ${report.score}/100</p>
     <p style="margin:0;color:#4b5563;font-size:13px">${shieldThreadDocumentEscape(report.recommendation)}</p>
+    ${report.ai?.summary ? `<p style="margin:8px 0 0;color:#4b5563;font-size:12px">${shieldThreadDocumentEscape(report.ai.summary)}</p>` : ""}
   `;
   document.body.appendChild(rail);
 }

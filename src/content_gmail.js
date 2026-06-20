@@ -209,6 +209,7 @@ function shieldThreadRenderGmailBar(report) {
   const color = shieldThreadRiskColor(report.level);
   const label = `${shieldThreadRiskLabel(report.level)} Risk`;
   const frameworkSummary = shieldThreadFrameworkSummary(report);
+  const aiSummary = report.ai?.summary || "";
   const bar = document.createElement("aside");
   bar.className = "shieldthread-email-bar";
   bar.innerHTML = `
@@ -220,6 +221,7 @@ function shieldThreadRenderGmailBar(report) {
     </div>
     <p style="margin:10px 0 0;color:#4b5563;font-size:13px">${shieldThreadGmailEscape(report.findings[0]?.detail || "No strong spoofing indicators found.")}</p>
     <p style="margin:8px 0 0;color:#475569;font-size:12px;line-height:1.42">${shieldThreadGmailEscape(frameworkSummary)}</p>
+    ${aiSummary ? `<p style="margin:8px 0 0;color:#475569;font-size:12px;line-height:1.42">${shieldThreadGmailEscape(aiSummary)}</p>` : ""}
     <button class="shieldthread-button secondary" style="width:100%;margin-top:12px" type="button">View details</button>
   `;
 
@@ -230,6 +232,7 @@ function shieldThreadRenderGmailBar(report) {
     detail.innerHTML = `
       <strong>Findings</strong>
       <p><b>Framework</b>: ${shieldThreadGmailEscape(frameworkSummary)}</p>
+      ${aiSummary ? `<p><b>AI summary</b>: ${shieldThreadGmailEscape(aiSummary)}</p>` : ""}
       ${report.findings.slice(0, 6).map((finding) => `<p><b>${shieldThreadGmailEscape(finding.category)}</b>: ${shieldThreadGmailEscape(finding.detail)}</p>`).join("") || "<p>No major findings.</p>"}
     `;
     document.body.appendChild(detail);

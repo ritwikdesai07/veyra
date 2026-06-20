@@ -24,6 +24,7 @@ function shieldThreadCreateReport(report, options = {}) {
   rail.className = options.className || "shieldthread-rail";
 
   const color = shieldThreadColor(report.level);
+  const ai = report.ai || {};
   const findings = report.findings.length
     ? report.findings.slice(0, 8).map((finding) => `
       <div class="shieldthread-finding">
@@ -48,15 +49,49 @@ function shieldThreadCreateReport(report, options = {}) {
       </div>
     </div>
     ${findings}
+    ${ai.summary ? `
+      <div class="shieldthread-finding">
+        <strong>AI Risk Summary</strong>
+        <p>${shieldThreadEscape(ai.summary)}</p>
+        ${ai.possibleImpact ? `<p><b>Impact:</b> ${shieldThreadEscape(ai.possibleImpact)}</p>` : ""}
+        ${ai.confidence ? `<p><b>Confidence:</b> ${shieldThreadEscape(ai.confidence)}</p>` : ""}
+      </div>
+    ` : ""}
     <div class="shieldthread-finding">
       <strong>Recommendation</strong>
       <p>${shieldThreadEscape(report.recommendation)}</p>
+    </div>
+    <div class="shieldthread-feedback" aria-label="ShieldThread feedback">
+      <button type="button" data-feedback="safe">Safe</button>
+      <button type="button" data-feedback="phishing">Phishing</button>
+      <button type="button" data-feedback="too-strict">Too strict</button>
     </div>
   `;
 
   if (options.closable) {
     rail.querySelector(".shieldthread-close").addEventListener("click", () => rail.remove());
   }
+
+  rail.querySelectorAll("[data-feedback]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const label = button.getAttribute("data-feedback");
+      button.parentElement.querySelectorAll("button").forEach((item) => {
+        item.disabled = true;
+      });
+      button.textContent = "Saved";
+      chrome.runtime.sendMessage({
+        type: "SAVE_FEEDBACK",
+        payload: {
+          reportId: report.id,
+          label,
+          surface: report.surface,
+          level: report.level,
+          score: report.score,
+          findingIds: report.findings.map((finding) => finding.id)
+        }
+      });
+    });
+  });
 
   return rail;
 }

@@ -45,6 +45,11 @@ chrome.runtime.sendMessage({ type: "GET_ACTIVITY" }, (response) => {
   renderActivity(response?.activity || []);
 });
 
+chrome.runtime.sendMessage({ type: "GET_FEEDBACK_STATS" }, (response) => {
+  const feedbackCount = document.getElementById("feedback-count");
+  if (feedbackCount) feedbackCount.textContent = `${response?.count || 0} labels`;
+});
+
 chrome.storage.local.get({ shieldThreadSettings: { adSupportedMode: false } }, ({ shieldThreadSettings }) => {
   const adMode = document.getElementById("ad-mode");
   adMode.checked = Boolean(shieldThreadSettings.adSupportedMode);
