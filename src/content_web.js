@@ -92,9 +92,9 @@ function veyraBuildGate() {
     <main class="veyra-gate-main">
       <div class="veyra-wait-card">
         <div class="veyra-arcade-top">
-          <div class="veyra-mark">V</div>
+          <div class="veyra-mark">VY</div>
           <div>
-            <span class="veyra-kicker">Website protection</span>
+            <span class="veyra-kicker">Scanning in progress</span>
             <h1>Checking this site before data leaves your browser</h1>
           </div>
         </div>
@@ -140,7 +140,7 @@ function veyraBuildGate() {
       </div>
     </main>
     <aside class="veyra-rail">
-      <div class="veyra-report-title"><h2>Veyra Risk Report</h2></div>
+      <div class="veyra-report-title"><h2>Risk report</h2></div>
       <div class="veyra-finding"><strong>Scan in progress</strong><p>Awaiting first-pass risk report.</p></div>
       <div class="veyra-ad-slot veyra-ad-slot-rail" aria-label="Advertisement placeholder">
         <span>Ad</span>
@@ -301,7 +301,7 @@ function veyraStartGame(canvas) {
     player.vy = -11.6;
     player.grounded = false;
     player.squash = 6;
-    addSpark(player.x + player.width / 2, player.y + player.height, "#2563eb");
+    addSpark(player.x + player.width / 2, player.y + player.height, "#2f6fed");
   }
 
   function respawn(losesLife) {
@@ -391,7 +391,7 @@ function veyraStartGame(canvas) {
         level.hazards.forEach((hz) => {
           const r = { x: hz.x, y: game.groundY - hz.y - hz.h, width: hz.w, height: hz.h };
           if (rectHit(playerBox, r)) {
-            addSpark(r.x + r.w / 2, r.y + r.h / 2, "#ef4444");
+            addSpark(r.x + r.w / 2, r.y + r.h / 2, "#ff5470");
             respawn(true);
           }
         });
@@ -404,7 +404,7 @@ function veyraStartGame(canvas) {
         if (rectHit(playerBox, r)) {
           orb.collected = true;
           game.score += 10;
-          addSpark(orb.x, game.groundY - orb.y, "#0ea5e9");
+          addSpark(orb.x, game.groundY - orb.y, "#00b894");
           updateHud();
         }
       });
@@ -442,17 +442,17 @@ function veyraStartGame(canvas) {
   function render() {
     const { width, height } = game;
     ctx.clearRect(0, 0, width, height);
-    drawRect(0, 0, width, height, "#f8fbff");
+    drawRect(0, 0, width, height, "#eef1fa");
 
-    ctx.fillStyle = "#e8f1ff";
+    ctx.fillStyle = "#dde3f3";
     for (let i = 0; i < 14; i += 1) {
       const wx = i * 220 - ((game.camX * 0.3) % 220);
       ctx.fillRect(wx, height * 0.18, 2, height * 0.5);
     }
 
     const groundScreenY = toScreenY(game.groundY);
-    drawRect(0, groundScreenY, width, height - groundScreenY, "#eef6ff");
-    ctx.strokeStyle = "#bfdbfe";
+    drawRect(0, groundScreenY, width, height - groundScreenY, "#e6eaf6");
+    ctx.strokeStyle = "#c9d2e6";
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(0, groundScreenY);
@@ -463,22 +463,22 @@ function veyraStartGame(canvas) {
       const r = platRect(p);
       const sx = worldToScreenX(r.x);
       if (sx + r.width * game.scale < -10 || sx > width + 10) return;
-      drawRect(sx, toScreenY(r.y), r.width * game.scale, r.height * game.scale, "#dbeafe");
-      drawRect(sx, toScreenY(r.y), r.width * game.scale, 4 * game.scale, "#60a5fa");
+      drawRect(sx, toScreenY(r.y), r.width * game.scale, r.height * game.scale, "#dde3f3");
+      drawRect(sx, toScreenY(r.y), r.width * game.scale, 4 * game.scale, "#2f6fed");
     });
 
     level.pits.forEach((pit) => {
       const sx = worldToScreenX(pit.x);
       if (sx + pit.w * game.scale < -10 || sx > width + 10) return;
       ctx.clearRect(sx, groundScreenY, pit.w * game.scale, height - groundScreenY);
-      drawRect(sx, groundScreenY, pit.w * game.scale, 3, "#94a3b8");
+      drawRect(sx, groundScreenY, pit.w * game.scale, 3, "#8893ab");
     });
 
     level.hazards.forEach((hz) => {
       const wy = game.groundY - hz.y - hz.h;
       const sx = worldToScreenX(hz.x);
       if (sx + hz.w * game.scale < -10 || sx > width + 10) return;
-      drawRect(sx, toScreenY(wy), hz.w * game.scale, hz.h * game.scale, "#ef4444");
+      drawRect(sx, toScreenY(wy), hz.w * game.scale, hz.h * game.scale, "#ff5470");
       ctx.fillStyle = "#ffffff";
       ctx.font = `bold ${Math.max(9, 12 * game.scale)}px Inter, sans-serif`;
       ctx.textAlign = "center";
@@ -492,7 +492,7 @@ function veyraStartGame(canvas) {
       if (sx < -12 || sx > width + 12) return;
       const sy = toScreenY(game.groundY - orb.y);
       const bob = Math.sin((game.frame + orb.id * 30) / 22) * 3 * game.scale;
-      ctx.fillStyle = "#0ea5e9";
+      ctx.fillStyle = "#00b894";
       ctx.beginPath();
       ctx.arc(sx, sy + bob, orb.r * game.scale, 0, Math.PI * 2);
       ctx.fill();
@@ -504,8 +504,8 @@ function veyraStartGame(canvas) {
 
     const goalSx = worldToScreenX(level.goalX);
     if (goalSx > -20 && goalSx < width + 20) {
-      drawRect(goalSx, groundScreenY - 80 * game.scale, 3 * game.scale, 80 * game.scale, "#1e3a8a");
-      drawRect(goalSx + 3 * game.scale, groundScreenY - 80 * game.scale, 26 * game.scale, 18 * game.scale, "#2563eb");
+      drawRect(goalSx, groundScreenY - 80 * game.scale, 3 * game.scale, 80 * game.scale, "#0b1220");
+      drawRect(goalSx + 3 * game.scale, groundScreenY - 80 * game.scale, 26 * game.scale, 18 * game.scale, "#2f6fed");
     }
 
     const player = game.player;
@@ -514,18 +514,13 @@ function veyraStartGame(canvas) {
     const psy = toScreenY(player.y + player.squash);
     const pw = player.width * game.scale;
     const ph = (player.height - player.squash) * game.scale;
-    drawRect(psx, psy, pw, ph, flashHurt ? "#fca5a5" : "#2563eb");
-    drawRect(psx + pw * 0.18, psy - ph * 0.3, pw * 0.64, ph * 0.32, flashHurt ? "#fca5a5" : "#60a5fa");
+    drawRect(psx, psy, pw, ph, flashHurt ? "#ffb3c0" : "#2f6fed");
+    drawRect(psx + pw * 0.18, psy - ph * 0.3, pw * 0.64, ph * 0.32, flashHurt ? "#ffb3c0" : "#5b8ef7");
     ctx.fillStyle = "#ffffff";
     const eyeX = player.facing > 0 ? psx + pw * 0.62 : psx + pw * 0.2;
     ctx.beginPath();
     ctx.arc(eyeX, psy - ph * 0.1, Math.max(1.4, 2 * game.scale), 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = "#1e3a8a";
-    ctx.font = `bold ${Math.max(8, 10 * game.scale)}px Inter, sans-serif`;
-    ctx.textAlign = "center";
-    ctx.fillText("V", psx + pw / 2, psy + ph * 0.72);
-    ctx.textAlign = "left";
 
     game.sparks.forEach((spark) => {
       ctx.globalAlpha = Math.max(0, spark.life / 24);
@@ -534,7 +529,7 @@ function veyraStartGame(canvas) {
     });
 
     if (game.won) {
-      ctx.fillStyle = "rgba(15, 23, 42, 0.58)";
+      ctx.fillStyle = "rgba(11, 18, 32, 0.62)";
       ctx.fillRect(0, 0, width, height);
       ctx.fillStyle = "#ffffff";
       ctx.font = `bold ${Math.max(14, 18 * game.scale)}px Inter, sans-serif`;
@@ -655,7 +650,7 @@ function veyraRenderGateReport(gate, report) {
     const input = actions.querySelector("input");
     if (input && input.value.trim().toUpperCase() !== report.confirmationKeyword) {
       input.focus();
-      input.style.borderColor = "#dc2626";
+      input.style.borderColor = "#ff5470";
       return;
     }
     veyraStopGame();
