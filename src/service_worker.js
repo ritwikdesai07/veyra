@@ -4,15 +4,11 @@ const ACTIVITY_KEY = "veyraRecentActivity";
 const FEEDBACK_KEY = "veyraFeedback";
 const LOCAL_MODEL_ENDPOINT = "http://127.0.0.1:8765/score";
 const LOCAL_AI_ENDPOINT = "http://127.0.0.1:8766/analyze";
-const LOCAL_SPOOF_MODEL_ENDPOINT = "http://127.0.0.1:8767/score";
-const OPENAI_CHAT_ENDPOINT = "https://api.openai.com/v1/chat/completions";
-const TOPIC_CACHE_TTL_MS = 10 * 60 * 1000;
 const SAFE_HOSTS_KEY = "veyraSafeHosts";
 const SENDER_MEMORY_KEY = "veyraSenderMemory";
 const SENDER_PROFILE_KEY = "veyraSenderProfiles";
 const SAFE_HOST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const SENDER_MEMORY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const topicCache = new Map();
 
 async function getActivity() {
   const data = await chrome.storage.local.get({ [ACTIVITY_KEY]: [] });
@@ -37,20 +33,6 @@ async function getSenderProfiles() {
 async function getFeedback() {
   const data = await chrome.storage.local.get({ [FEEDBACK_KEY]: [] });
   return data[FEEDBACK_KEY];
-}
-
-async function getSettings() {
-  const data = await chrome.storage.local.get({
-    veyraSettings: {
-      protectionEnabled: true,
-      confirmationKeyword: "I UNDERSTAND",
-      adSupportedMode: false,
-      localModelEndpoint: LOCAL_MODEL_ENDPOINT,
-      openaiApiKey: "",
-      openaiModel: "gpt-4.1-mini"
-    }
-  });
-  return data.veyraSettings || {};
 }
 
 async function saveReport(report) {
@@ -109,7 +91,7 @@ function isFreshTrustedSender(entry) {
 }
 
 function hasLinkOrAttachmentRisk(report) {
-  return report.findings.some((finding) => ["Exact visual evidence", "Exact object evidence", "ML URL model", "ML spoof model"].includes(finding.category));
+  return report.findings.some((finding) => ["Links", "URL spoofing", "Brand impersonation", "Attachments", "ML URL model"].includes(finding.category));
 }
 
 function addServiceFinding(report, finding) {
@@ -129,12 +111,12 @@ function addServiceFinding(report, finding) {
 
 function frameworkForEmail(report, payload, senderMemoryEntry) {
   const senderSeenBefore = isFreshTrustedSender(senderMemoryEntry);
-  const senderFindings = report.findings.filter((finding) => finding.category === "Exact sender evidence");
-  const linkAttachmentFindings = report.findings.filter((finding) => ["Exact visual evidence", "Exact object evidence", "ML URL model", "ML spoof model"].includes(finding.category));
-  const comprehensionFindings = report.findings.filter((finding) => ["AI semantic evidence", "AI model"].includes(finding.category));
+  const senderFindings = report.findings.filter((finding) => finding.category.includes("Sender") || finding.category.includes("spoof"));
+  const linkAttachmentFindings = report.findings.filter((finding) => ["Links", "URL spoofing", "Brand impersonation", "Attachments", "ML URL model"].includes(finding.category));
+  const comprehensionFindings = report.findings.filter((finding) => ["Social engineering", "Credential harvesting", "Business email compromise", "Data access", "Attachment execution", "Callback phishing", "Data integrity"].includes(finding.category));
 
   return {
-    name: "Veyra hybrid AI/ML email framework",
+    name: "Assumed spoofed email framework",
     senderKey: senderKeyFor(payload.sender),
     senderSeenBefore,
     askedToCheckMail: !senderSeenBefore,
@@ -168,7 +150,7 @@ function buildKnownSenderPassReport(payload, senderMemoryEntry) {
     confirmationKeyword: "",
     model: "Veyra email sender-memory framework v0.3",
     framework: {
-      name: "Veyra hybrid AI/ML email framework",
+      name: "Assumed spoofed email framework",
       senderKey: senderKeyFor(payload.sender),
       senderSeenBefore: true,
       askedToCheckMail: false,
@@ -201,267 +183,31 @@ function urlFromLink(link) {
 
 function collectUrlsForModel(payload, fallbackUrl) {
   const urls = new Set();
+  const canonical = new Set();
   const surface = payload?.surface || "";
 
   if (["website", "download"].includes(surface) && (payload?.url || fallbackUrl)) {
     urls.add(payload.url || fallbackUrl);
   }
 
+  // Sublinks found within the page (or email body) are checked the same
+  // way: every link gets pulled in here, then reduced to scheme+host below,
+  // just like the page URL itself and just like an email sender is reduced
+  // to its domain.
   (payload?.links || []).map(urlFromLink).forEach((url) => {
     if (/^https?:\/\//i.test(url)) urls.add(url);
   });
 
-  return [...urls].filter((url) => /^https?:\/\//i.test(url)).slice(0, 25);
-}
-
-function collectSpoofInputs(payload) {
-  const inputs = new Set();
-  const sender = senderKeyFor(payload?.sender || "");
-  if (sender) inputs.add(sender);
-
-  (payload?.links || []).map(urlFromLink).forEach((url) => {
-    if (!url) return;
-    inputs.add(url);
-    const host = hostFor(url);
-    if (host && host !== "Unknown URL") inputs.add(host);
+  // Cut each URL down to its first part (scheme + host) before it goes to
+  // the model, the same way an email address is reduced to its domain.
+  // This also de-duplicates links that only differ by path/query/IDs, so
+  // a site with 25 links to the same domain only costs the model 1 call.
+  urls.forEach((url) => {
+    const clean = self.VeyraRiskEngine.canonicalizeUrlForCheck(url);
+    if (clean.href) canonical.add(clean.href);
   });
 
-  return [...inputs].filter(Boolean).slice(0, 40);
-}
-
-async function fetchLocalSpoofScores(inputs) {
-  if (!inputs.length) return null;
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 950);
-  try {
-    const response = await fetch(LOCAL_SPOOF_MODEL_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ inputs }),
-      signal: controller.signal
-    });
-    if (!response.ok) return { status: "error", error: `HTTP ${response.status}` };
-    return await response.json();
-  } catch (error) {
-    return { status: "unavailable", error: error?.name === "AbortError" ? "timeout" : String(error?.message || error) };
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-function flagSummary(flags) {
-  if (!Array.isArray(flags) || !flags.length) return "No character-level flags returned.";
-  return flags.slice(0, 4).map((flag) => {
-    const text = String(flag.text || "").trim() || "invisible";
-    return `${text} at ${flag.start}-${flag.end} (${flag.reason || "suspicious"})`;
-  }).join("; ");
-}
-
-function addSpoofModelFinding(report, result) {
-  const probability = Number(result.spoof_probability || 0);
-  const predictedSpoof = result.label === 1 || result.label === "1" || String(result.label_text || "").toLowerCase() === "spoof";
-  if (probability < 0.55 && !predictedSpoof) return;
-
-  const points = probability >= 0.82 || predictedSpoof ? 24 : 15;
-  const input = String(result.input || "Email identity");
-  addServiceFinding(report, {
-    id: "visual-spoof-ml-score",
-    severity: points >= 22 ? "high" : "medium",
-    points,
-    category: "ML spoof model",
-    where: input.slice(0, 120),
-    detail: `Visual spoof ML model estimated ${Math.round(probability * 100)}% spoof probability. ${flagSummary(result.flags)}`,
-    advice: "Check the sender and link domains character by character before trusting this message.",
-    source: "Local Veyra visual spoof detector"
-  });
-}
-
-async function enrichReportWithSpoofModel(report, payload) {
-  if (!isEmailSurface(payload?.surface)) return report;
-
-  const inputs = collectSpoofInputs(payload);
-  const modelResponse = await fetchLocalSpoofScores(inputs);
-  if (!modelResponse || modelResponse.status === "unavailable") return report;
-
-  report.spoofMl = {
-    status: modelResponse.status || "ok",
-    model: modelResponse.model || "local-visual-spoof-model",
-    results: (modelResponse.results || []).slice(0, 12)
-  };
-
-  (modelResponse.results || []).forEach((result) => addSpoofModelFinding(report, result));
-  recomputeReportRisk(report);
-  report.model = `${report.model} + local visual spoof ML model`;
-  return report;
-}
-
-function topicCacheKey(payload) {
-  return `${senderKeyFor(payload?.sender || "")}|${String(payload?.subject || payload?.title || "").slice(0, 180)}`;
-}
-
-function getCachedTopic(key) {
-  const entry = topicCache.get(key);
-  if (!entry) return null;
-  if (Date.now() - Number(entry.createdAt || 0) > TOPIC_CACHE_TTL_MS) {
-    topicCache.delete(key);
-    return null;
-  }
-  return entry;
-}
-
-function parseOpenAiJson(text) {
-  const raw = String(text || "").trim();
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch (_error) {
-    const match = raw.match(/\{[\s\S]*\}/);
-    if (!match) return null;
-    try {
-      return JSON.parse(match[0]);
-    } catch (_innerError) {
-      return null;
-    }
-  }
-}
-
-function outputTextFromOpenAi(data) {
-  if (typeof data?.output_text === "string") return data.output_text;
-  const chunks = [];
-  (data?.output || []).forEach((item) => {
-    (item.content || []).forEach((content) => {
-      if (typeof content.text === "string") chunks.push(content.text);
-    });
-  });
-  return chunks.join("\n");
-}
-
-async function callOpenAiTopicModel({ apiKey, model, kind, text }) {
-  const trimmed = String(text || "").replace(/\s+/g, " ").trim().slice(0, 6000);
-  if (!apiKey || !trimmed) return null;
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
-  try {
-    const response = await fetch(OPENAI_CHAT_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: model || "gpt-4.1-mini",
-        messages: [
-          {
-            role: "system",
-            content: "You extract email topics for a security browser extension. Return only compact JSON."
-          },
-          {
-            role: "user",
-            content: `Analyze this ${kind}. Return JSON with keys topic, intent, sensitive_action, confidence. Text: ${trimmed}`
-          }
-        ],
-        response_format: { type: "json_object" }
-      }),
-      signal: controller.signal
-    });
-    if (!response.ok) return { error: `HTTP ${response.status}` };
-    const data = await response.json();
-    const content = data?.choices?.[0]?.message?.content || outputTextFromOpenAi(data);
-    return parseOpenAiJson(content) || { error: "Could not parse OpenAI topic JSON" };
-  } catch (error) {
-    return { error: error?.name === "AbortError" ? "timeout" : String(error?.message || error) };
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-function compareTopics(headerTopic, bodyTopic) {
-  const header = String(headerTopic?.topic || "").toLowerCase();
-  const body = String(bodyTopic?.topic || "").toLowerCase();
-  const headerIntent = String(headerTopic?.intent || "").toLowerCase();
-  const bodyIntent = String(bodyTopic?.intent || "").toLowerCase();
-  const sameTopic = Boolean(header && body && (header === body || header.includes(body) || body.includes(header)));
-  const sameIntent = Boolean(headerIntent && bodyIntent && (headerIntent === bodyIntent || headerIntent.includes(bodyIntent) || bodyIntent.includes(headerIntent)));
-  const mismatch = Boolean(header && body && !sameTopic && !sameIntent);
-  return {
-    headerTopic,
-    bodyTopic,
-    match: !mismatch,
-    mismatch,
-    reason: mismatch
-      ? `Header topic "${headerTopic.topic}" differs from body topic "${bodyTopic.topic}".`
-      : "Header and body topics appear aligned."
-  };
-}
-
-async function enrichReportWithOpenAiTopicCheck(report, payload) {
-  if (payload?.surface !== "email") return report;
-  const settings = await getSettings();
-  const apiKey = String(settings.openaiApiKey || "").trim();
-  if (!apiKey) {
-    report.topicMatch = {
-      status: "disabled",
-      reason: "No OpenAI API key saved locally."
-    };
-    return report;
-  }
-
-  const key = topicCacheKey(payload);
-  const cached = getCachedTopic(key);
-  const headerText = `${payload.subject || payload.title || ""} ${payload.headerText || ""}`.trim();
-  const bodyText = String(payload.text || "").replace(String(payload.headerText || ""), "").trim() || payload.text || "";
-  const headerTopic = cached?.headerTopic || await callOpenAiTopicModel({
-    apiKey,
-    model: settings.openaiModel,
-    kind: "email header and subject",
-    text: headerText
-  });
-  if (!cached && headerTopic && !headerTopic.error) {
-    topicCache.set(key, { headerTopic, createdAt: Date.now() });
-  }
-
-  const bodyTopic = await callOpenAiTopicModel({
-    apiKey,
-    model: settings.openaiModel,
-    kind: "email body",
-    text: bodyText
-  });
-
-  if (headerTopic?.error || bodyTopic?.error) {
-    report.topicMatch = {
-      status: "error",
-      headerTopic,
-      bodyTopic,
-      reason: headerTopic?.error || bodyTopic?.error
-    };
-    return report;
-  }
-
-  const comparison = compareTopics(headerTopic, bodyTopic);
-  report.topicMatch = {
-    status: "ok",
-    model: settings.openaiModel || "gpt-4.1-mini",
-    ...comparison
-  };
-
-  if (comparison.mismatch) {
-    addServiceFinding(report, {
-      id: "openai-header-body-topic-mismatch",
-      severity: "medium",
-      points: 18,
-      category: "OpenAI topic model",
-      where: payload.subject || payload.title || "Email topic",
-      detail: comparison.reason,
-      advice: "Treat this email as suspicious until the sender confirms the request through a trusted channel.",
-      source: "OpenAI topic comparison"
-    });
-    recomputeReportRisk(report);
-  }
-
-  report.model = `${report.model} + OpenAI header/body topic check`;
-  return report;
+  return [...canonical].filter((url) => /^https?:\/\//i.test(url)).slice(0, 25);
 }
 
 async function fetchLocalModelScores(urls) {
@@ -506,9 +252,8 @@ function addModelFinding(report, result) {
 function recomputeReportRisk(report) {
   const raw = report.findings.reduce((sum, finding) => sum + (finding.points || 0), 0);
   const highCount = report.findings.filter((finding) => finding.severity === "high").length;
-  const exactStrongSignals = report.findings.filter((finding) => String(finding.category || "").startsWith("Exact") && finding.severity === "high").length;
-  const diversityBonus = new Set(report.findings.map((finding) => finding.category)).size * 2;
-  report.score = Math.min(100, raw + diversityBonus + Math.max(0, highCount - 1) * 5 + exactStrongSignals * 3);
+  const diversityBonus = new Set(report.findings.map((finding) => finding.category)).size * 3;
+  report.score = Math.min(100, raw + diversityBonus + Math.max(0, highCount - 1) * 6);
   report.level = self.VeyraRiskEngine.levelForScore(report.score);
   report.recommendation = recommendationFor(report.level);
   report.confirmationKeyword = report.level === "safe" ? "" : "I UNDERSTAND";
@@ -533,16 +278,9 @@ async function enrichReportWithLocalModel(report, payload, fallbackUrl) {
 }
 
 function redactedPayloadForAi(payload, report) {
-  const isEmail = isEmailSurface(payload?.surface);
   return {
     surface: payload?.surface || report.surface,
     title: String(payload?.title || report.title || "").slice(0, 160),
-    subject: String(payload?.subject || payload?.title || report.title || "").slice(0, 240),
-    text: isEmail ? String(payload?.text || "").slice(0, 12000) : "",
-    sender: isEmail ? String(payload?.sender || "").slice(0, 240) : "",
-    recipients: isEmail && Array.isArray(payload?.recipients) ? payload.recipients.slice(0, 20) : [],
-    links: Array.isArray(payload?.links) ? payload.links.slice(0, 30) : [],
-    attachments: Array.isArray(payload?.attachments) ? payload.attachments.slice(0, 30) : [],
     host: hostFor(payload?.url || report.url || ""),
     features: report.features || self.VeyraRiskEngine.extractSurfaceFeatures(payload || {}),
     findingIds: report.findings.map((finding) => finding.id).slice(0, 20),
@@ -589,7 +327,7 @@ function buildAiNarrative(report) {
       : "No strong evidence suggests immediate data compromise, but sensitive actions should still be verified.";
   const summary = top.length
     ? `Veyra found ${top.length} main signal${top.length === 1 ? "" : "s"}: ${riskDrivers.join("; ")}.`
-    : "Veyra did not find strong identity, visual, or AI/ML risk evidence in the available data.";
+    : "Veyra did not find strong phishing or spoofing evidence in the available page data.";
 
   return {
     mode: "evidence-bound local report",
@@ -689,14 +427,12 @@ async function buildSurfaceReport(payload, options = {}) {
     const senderMemory = await getSenderMemory();
     const senderMemoryEntry = senderKey ? senderMemory[senderKey] : null;
 
-    if (isFreshTrustedSender(senderMemoryEntry) && !collectSpoofInputs(payload).some((input) => /^https?:\/\//i.test(input))) {
+    if (isFreshTrustedSender(senderMemoryEntry)) {
       return buildKnownSenderPassReport(payload, senderMemoryEntry);
     }
 
     const report = self.VeyraRiskEngine.analyzeSurface(payload);
     await enrichReportWithLocalModel(report, payload, payload.url);
-    await enrichReportWithSpoofModel(report, payload);
-    await enrichReportWithOpenAiTopicCheck(report, payload);
     await enrichReportWithSenderAnomaly(report, payload, senderMemoryEntry);
     report.framework = frameworkForEmail(report, payload, senderMemoryEntry);
     await enrichReportWithAi(report, payload);
@@ -829,15 +565,14 @@ async function shouldGateWebsite(url) {
 }
 
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.local.get({ veyraSettings: {} }).then(({ veyraSettings }) => chrome.storage.local.set({
+  chrome.storage.local.set({
     veyraSettings: {
-      ...(veyraSettings || {}),
       protectionEnabled: true,
-      confirmationKeyword: veyraSettings?.confirmationKeyword || "I UNDERSTAND",
-      adSupportedMode: Boolean(veyraSettings?.adSupportedMode),
+      confirmationKeyword: "I UNDERSTAND",
+      adSupportedMode: false,
       localModelEndpoint: LOCAL_MODEL_ENDPOINT
     }
-  }));
+  });
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
