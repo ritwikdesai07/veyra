@@ -431,10 +431,10 @@
 .veyra-row-risk-active,
 tr.zA:hover .veyra-row-risk,
 tr[role="row"]:hover .veyra-row-risk {
-  opacity: 0.82;
-  transform: translateX(-88px);
+  opacity: 1;
+  transform: translateX(-118px);
   z-index: 2147483646;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 12px 26px rgba(14, 116, 144, 0.14);
 }
 
 .veyra-row-risk-track {
@@ -460,33 +460,57 @@ tr[role="row"]:hover .veyra-row-risk {
 .veyra-gmail-tooltip {
   position: fixed;
   z-index: 2147483647;
-  width: 320px;
-  border: 1px solid #cbd5e1;
+  width: 348px;
+  border: 1px solid #bfdbfe;
   border-radius: 8px;
-  background: #fdfefe;
-  box-shadow: 0 22px 55px rgba(15, 23, 42, 0.22);
-  padding: 14px;
+  background: #ffffff;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+  padding: 14px 14px 12px;
   pointer-events: none;
-  transform: translateX(-12px);
+  transform: translateX(-22px);
 }
 
 .veyra-gmail-tooltip-head {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid #dbeafe;
   padding-bottom: 10px;
   margin-bottom: 10px;
   font-size: 13px;
 }
 
+.veyra-gmail-tooltip-head strong {
+  color: #0f172a;
+  font-size: 13px;
+}
+
+.veyra-gmail-tooltip-head span {
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  padding: 3px 8px;
+  color: #0369a1;
+  background: #f8fbff;
+  font-weight: 800;
+}
+
+.veyra-gmail-tooltip-section {
+  margin-top: 10px;
+  color: #0369a1;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
 .veyra-gmail-tooltip-finding {
   padding: 8px 0;
-  border-bottom: 1px solid #edf0f2;
+  border-bottom: 1px solid #e0f2fe;
 }
 
 .veyra-gmail-tooltip-finding b {
   display: block;
+  color: #0f172a;
   font-size: 12px;
 }
 
@@ -504,6 +528,27 @@ tr[role="row"]:hover .veyra-row-risk {
   color: #475569;
   font-size: 12px;
   line-height: 1.42;
+}
+
+.veyra-gmail-tooltip-ai {
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 10px;
+  margin: 8px 0 10px;
+}
+
+.veyra-gmail-tooltip-ai b {
+  display: block;
+  color: #075985;
+  font-size: 12px;
+}
+
+.veyra-gmail-tooltip em {
+  margin-top: 10px;
+  color: #334155;
+  font-style: normal;
+  font-weight: 700;
 }
 
 .veyra-ad-slot {

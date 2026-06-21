@@ -1,0 +1,13 @@
+label,subject,body,sender,recipients,links,attachments,link_count,attachment_count,sender_confusable_count,domain_mismatch_count,header_body_mismatch
+safe,Project notes,Here are the meeting notes from today. No action needed.,alex@example.com,team@example.com,,notes.pdf,0,1,0,0,0
+safe,Lunch plan,Want to grab lunch tomorrow near campus?,friend@example.com,me@example.com,,,0,0,0,0,0
+safe,GitHub notification,A repository you watch has a new issue. Visit GitHub directly if you want to review it.,noreply@github.com,me@example.com,https://github.com/example/repo,,1,0,0,0,0
+safe,Document shared,A document was shared with you by your teacher.,share@google.com,student@example.com,https://docs.google.com/document/d/example,,1,0,0,0,0
+safe,Invoice received,Attached is the invoice for the work completed last month.,billing@knownvendor.com,accounting@example.com,,invoice.pdf,0,1,0,0,0
+safe,Password changed,Your password was changed successfully. If this was you no action is needed.,security@microsoft.com,me@example.com,,,0,0,0,0,0
+phishing,Final notice verify now,Your account will be suspended today. Click the link and enter your password to restore access.,security@rnicrosoft.com,me@example.com,https://rnicrosoft.com/login,,1,0,2,0,0
+phishing,Payment update required,Update bank routing details immediately using the attached secure form.,payroll@company-support.com,finance@example.com,,bank-update.html,0,1,0,0,0
+phishing,Shared document,Open the protected document and sign in with your email password to view it.,docs@googIe-drive.com,me@example.com,https://googIe-drive.com/doc,,1,0,1,0,0
+phishing,Account security alert,We detected suspicious activity. Verify your mailbox password within 24 hours.,support@paypaI.com,me@example.com,https://paypaI.com/security,,1,0,1,0,0
+phishing,Urgent invoice,Please pay this invoice today by wire transfer to the new account details.,ceo@gmail.com,accounting@example.com,,invoice.zip,0,1,0,0,0
+phishing,Storage full,Your mailbox storage is full. Login now to keep receiving messages.,it-helpdesk@examp1e.com,me@example.com,https://examp1e.com/mail,,1,0,1,0,0

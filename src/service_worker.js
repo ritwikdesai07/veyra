@@ -91,7 +91,7 @@ function isFreshTrustedSender(entry) {
 }
 
 function hasLinkOrAttachmentRisk(report) {
-  return report.findings.some((finding) => ["Links", "URL spoofing", "Brand impersonation", "Attachments", "ML URL model"].includes(finding.category));
+  return report.findings.some((finding) => ["Exact visual evidence", "Exact object evidence", "ML URL model"].includes(finding.category));
 }
 
 function addServiceFinding(report, finding) {
@@ -111,12 +111,12 @@ function addServiceFinding(report, finding) {
 
 function frameworkForEmail(report, payload, senderMemoryEntry) {
   const senderSeenBefore = isFreshTrustedSender(senderMemoryEntry);
-  const senderFindings = report.findings.filter((finding) => finding.category.includes("Sender") || finding.category.includes("spoof"));
-  const linkAttachmentFindings = report.findings.filter((finding) => ["Links", "URL spoofing", "Brand impersonation", "Attachments", "ML URL model"].includes(finding.category));
-  const comprehensionFindings = report.findings.filter((finding) => ["Social engineering", "Credential harvesting", "Business email compromise", "Data access", "Attachment execution", "Callback phishing", "Data integrity"].includes(finding.category));
+  const senderFindings = report.findings.filter((finding) => finding.category === "Exact sender evidence");
+  const linkAttachmentFindings = report.findings.filter((finding) => ["Exact visual evidence", "Exact object evidence", "ML URL model"].includes(finding.category));
+  const comprehensionFindings = report.findings.filter((finding) => ["AI semantic evidence", "AI model"].includes(finding.category));
 
   return {
-    name: "Assumed spoofed email framework",
+    name: "Veyra hybrid AI/ML email framework",
     senderKey: senderKeyFor(payload.sender),
     senderSeenBefore,
     askedToCheckMail: !senderSeenBefore,
@@ -150,7 +150,7 @@ function buildKnownSenderPassReport(payload, senderMemoryEntry) {
     confirmationKeyword: "",
     model: "Veyra email sender-memory framework v0.3",
     framework: {
-      name: "Assumed spoofed email framework",
+      name: "Veyra hybrid AI/ML email framework",
       senderKey: senderKeyFor(payload.sender),
       senderSeenBefore: true,
       askedToCheckMail: false,
@@ -238,8 +238,9 @@ function addModelFinding(report, result) {
 function recomputeReportRisk(report) {
   const raw = report.findings.reduce((sum, finding) => sum + (finding.points || 0), 0);
   const highCount = report.findings.filter((finding) => finding.severity === "high").length;
-  const diversityBonus = new Set(report.findings.map((finding) => finding.category)).size * 3;
-  report.score = Math.min(100, raw + diversityBonus + Math.max(0, highCount - 1) * 6);
+  const exactStrongSignals = report.findings.filter((finding) => String(finding.category || "").startsWith("Exact") && finding.severity === "high").length;
+  const diversityBonus = new Set(report.findings.map((finding) => finding.category)).size * 2;
+  report.score = Math.min(100, raw + diversityBonus + Math.max(0, highCount - 1) * 5 + exactStrongSignals * 3);
   report.level = self.VeyraRiskEngine.levelForScore(report.score);
   report.recommendation = recommendationFor(report.level);
   report.confirmationKeyword = report.level === "safe" ? "" : "I UNDERSTAND";
@@ -264,9 +265,16 @@ async function enrichReportWithLocalModel(report, payload, fallbackUrl) {
 }
 
 function redactedPayloadForAi(payload, report) {
+  const isEmail = isEmailSurface(payload?.surface);
   return {
     surface: payload?.surface || report.surface,
     title: String(payload?.title || report.title || "").slice(0, 160),
+    subject: String(payload?.subject || payload?.title || report.title || "").slice(0, 240),
+    text: isEmail ? String(payload?.text || "").slice(0, 12000) : "",
+    sender: isEmail ? String(payload?.sender || "").slice(0, 240) : "",
+    recipients: isEmail && Array.isArray(payload?.recipients) ? payload.recipients.slice(0, 20) : [],
+    links: Array.isArray(payload?.links) ? payload.links.slice(0, 30) : [],
+    attachments: Array.isArray(payload?.attachments) ? payload.attachments.slice(0, 30) : [],
     host: hostFor(payload?.url || report.url || ""),
     features: report.features || self.VeyraRiskEngine.extractSurfaceFeatures(payload || {}),
     findingIds: report.findings.map((finding) => finding.id).slice(0, 20),
@@ -313,7 +321,7 @@ function buildAiNarrative(report) {
       : "No strong evidence suggests immediate data compromise, but sensitive actions should still be verified.";
   const summary = top.length
     ? `Veyra found ${top.length} main signal${top.length === 1 ? "" : "s"}: ${riskDrivers.join("; ")}.`
-    : "Veyra did not find strong phishing or spoofing evidence in the available page data.";
+    : "Veyra did not find strong identity, visual, or AI/ML risk evidence in the available data.";
 
   return {
     mode: "evidence-bound local report",

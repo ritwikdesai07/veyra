@@ -34,7 +34,7 @@ function veyraCreateReport(report, options = {}) {
         <p><b>Advice:</b> ${veyraEscape(finding.advice)}</p>
         <p><b>Evidence:</b> ${veyraEscape(finding.source)} - ${finding.points || 0} pts</p>
       </div>`).join("")
-    : `<div class="veyra-finding"><strong>No major indicators found</strong><p>Veyra did not find strong phishing or spoofing patterns in this scan.</p></div>`;
+    : `<div class="veyra-finding"><strong>No major indicators found</strong><p>Veyra did not find strong identity, visual, or AI/ML risk evidence in this scan.</p></div>`;
 
   rail.innerHTML = `
     <div class="veyra-report-title">

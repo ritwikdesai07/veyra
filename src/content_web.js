@@ -92,7 +92,7 @@ function veyraBuildGate() {
     <main class="veyra-gate-main">
       <div class="veyra-wait-card">
         <div class="veyra-arcade-top">
-          <div class="veyra-mark">ST</div>
+          <div class="veyra-mark">V</div>
           <div>
             <span class="veyra-kicker">Website protection</span>
             <h1>Checking this site before data leaves your browser</h1>
@@ -521,6 +521,11 @@ function veyraStartGame(canvas) {
     ctx.beginPath();
     ctx.arc(eyeX, psy - ph * 0.1, Math.max(1.4, 2 * game.scale), 0, Math.PI * 2);
     ctx.fill();
+    ctx.fillStyle = "#1e3a8a";
+    ctx.font = `bold ${Math.max(8, 10 * game.scale)}px Inter, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.fillText("V", psx + pw / 2, psy + ph * 0.72);
+    ctx.textAlign = "left";
 
     game.sparks.forEach((spark) => {
       ctx.globalAlpha = Math.max(0, spark.life / 24);

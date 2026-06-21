@@ -1,0 +1,120 @@
+{
+  "model": "random-forest-visual-spoof-detector-v1",
+  "rows": 182,
+  "train_rows": 145,
+  "test_rows": 37,
+  "precision": 1.0,
+  "recall": 0.9642857142857143,
+  "f1": 0.9818181818181818,
+  "classification_report": {
+    "0": {
+      "precision": 0.9,
+      "recall": 1.0,
+      "f1-score": 0.9473684210526315,
+      "support": 9.0
+    },
+    "1": {
+      "precision": 1.0,
+      "recall": 0.9642857142857143,
+      "f1-score": 0.9818181818181818,
+      "support": 28.0
+    },
+    "accuracy": 0.972972972972973,
+    "macro avg": {
+      "precision": 0.95,
+      "recall": 0.9821428571428572,
+      "f1-score": 0.9645933014354067,
+      "support": 37.0
+    },
+    "weighted avg": {
+      "precision": 0.9756756756756757,
+      "recall": 0.972972972972973,
+      "f1-score": 0.9734385102806156,
+      "support": 37.0
+    }
+  },
+  "confusion_matrix": [
+    [
+      9,
+      0
+    ],
+    [
+      1,
+      27
+    ]
+  ],
+  "example_predictions": [
+    {
+      "input": "Please verify your account at dropbox.corn before it is suspended.",
+      "actual": 1,
+      "predicted": 1,
+      "probability": 1.0
+    },
+    {
+      "input": "admin@example.com",
+      "actual": 0,
+      "predicted": 0,
+      "probability": 0.42777777777777776
+    },
+    {
+      "input": "notice@dropbox.corn",
+      "actual": 1,
+      "predicted": 1,
+      "probability": 0.9444444444444444
+    },
+    {
+      "input": "security@\u200bexample.com",
+      "actual": 1,
+      "predicted": 1,
+      "probability": 0.9333333333333333
+    },
+    {
+      "input": "https://www.adobe.corn/invoice",
+      "actual": 1,
+      "predicted": 1,
+      "probability": 0.8833333333333333
+    },
+    {
+      "input": "paypal.corn",
+      "actual": 1,
+      "predicted": 1,
+      "probability": 0.8944444444444445
+    },
+    {
+      "input": "docusign.\u0441om/security",
+      "actual": 1,
+      "predicted": 1,
+      "probability": 0.9888888888888889
+    },
+    {
+      "input": "docusign.com",
+      "actual": 0,
+      "predicted": 0,
+      "probability": 0.17222222222222222
+    },
+    {
+      "input": "drop\u202dbox.com",
+      "actual": 1,
+      "predicted": 1,
+      "probability": 0.9277777777777778
+    },
+    {
+      "input": "google.corn",
+      "actual": 1,
+      "predicted": 1,
+      "probability": 0.8833333333333333
+    },
+    {
+      "input": "Open the secure document from chase.c0m and sign in to continue.",
+      "actual": 1,
+      "predicted": 1,
+      "probability": 1.0
+    },
+    {
+      "input": "billing@wellsf\u200cargo.com",
+      "actual": 1,
+      "predicted": 1,
+      "probability": 0.9333333333333333
+    }
+  ]
+}

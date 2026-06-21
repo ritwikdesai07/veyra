@@ -5,7 +5,7 @@ Veyra is a hackathon-stage Chrome extension prototype for explainable phishing a
 ## What is built
 
 - Manifest V3 Chrome extension scaffold.
-- Shared heuristic risk engine for sender, content, links, attachments, urgency language, brand impersonation, dangerous file types, and sensitive-data prompts.
+- Shared hybrid AI/ML feature engine for sender identity, recipient/context signals, subject-vs-body semantic mismatch, visual impersonation, links, attachments, and page/document objects.
 - Gmail content script that watches opened messages and renders a right-side risk bar.
 - Document/Drive/file content script that renders a compact document scan rail.
 - Website gate that briefly blocks a page, shows a small waiting game, scans visible page content/links/download-like URLs, then displays a short risk report.
@@ -22,16 +22,53 @@ Veyra is a hackathon-stage Chrome extension prototype for explainable phishing a
 
 ## Optional local ML model
 
-Veyra can call a local XGBoost URL classifier when the model server is running.
+Veyra can call local ML classifiers when the model servers are running.
+
+Recommended Python setup:
 
 ```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 python -m pip install -r ml\requirements.txt
+```
+
+If your global Python install throws a pandas/numpy import error, use the virtual environment above. If the venv still has trouble, reinstall inside the venv:
+
+```powershell
+python -m pip install --force-reinstall pandas numpy
+```
+
+Train and run the first email phishing model:
+
+```powershell
+python ml\train_email_model.py --data ml\data\email_training.csv
+python ml\email_model_server.py
+```
+
+That starts `http://127.0.0.1:8766/analyze`, which the extension already uses for local AI/ML email scoring. The included CSV is a demo dataset only; replace it with real labeled email data before relying on the model.
+
+Generate, train, and test the visual spoofing detector:
+
+```powershell
+python ml\generate_spoof_data.py --out ml\data\spoof_training.csv
+python ml\train_spoof_detector.py --data ml\data\spoof_training.csv
+python ml\spoof_cli.py "supp0rt@paypa1.com"
+python ml\spoof_cli.py "https://rnicrosoft.com/login"
+python ml\spoof_cli.py "google.com"
+```
+
+The spoof detector returns a binary label, probability score, and exact flagged characters/substrings with positions.
+
+Run the optional URL XGBoost model:
+
+```powershell
 python ml\url_model_server.py
 ```
 
 The server loads `C:\Users\ritwi_m2ofaxd\Downloads\XGBoostClassifier.pickle.dat` by default. If it is running, website URLs and links found in emails/documents can receive an extra `ML URL model` finding. If it is not running, Veyra silently falls back to the explainable JavaScript rules.
 
-If the pickle fails with an older-XGBoost serialization error, convert it from the original training environment:
+If it is not running, Veyra falls back to local feature evidence: visual confusables, sender/header alignment signals available from the page, semantic mismatch, and object context. If the pickle fails with an older-XGBoost serialization error, convert it from the original training environment:
 
 ```powershell
 python ml\convert_legacy_xgboost.py C:\Users\ritwi_m2ofaxd\Downloads\XGBoostClassifier.pickle.dat --out ml\xgboost_url_model.json
@@ -41,7 +78,7 @@ python ml\url_model_server.py
 
 ## AI/ML layers now wired
 
-The prototype now includes local-first AI plumbing for URL features, email intent classification, sender anomaly memory, website DOM/form features, document/attachment patterns, evidence-bound AI risk summaries, and user feedback labels.
+The prototype now includes local-first AI plumbing for URL features, email subject/body intent mismatch, sender anomaly memory, website DOM/form features, document/attachment object context, evidence-bound AI risk summaries, and user feedback labels.
 
 Read the implementation map in `docs/ai-implementation.md`.
 
@@ -51,7 +88,7 @@ Optional local AI endpoint:
 POST http://127.0.0.1:8766/analyze
 ```
 
-The extension sends redacted features, finding IDs, categories, and host metadata to that endpoint. It does not send raw email or document text to the optional AI endpoint.
+The extension sends email text to this endpoint only when it is running on localhost for local model scoring. Website/document payloads stay feature-focused. Do not point this endpoint to a cloud service without consent, redaction, retention limits, and a privacy review.
 
 ## Competitive landscape
 
@@ -89,9 +126,9 @@ Veyra should not compete as only another phishing detector. The stronger story i
 
 ## Next build steps
 
-- Add a local model/API adapter behind the risk engine.
 - Add URL redirect-chain expansion and domain reputation checks.
 - Add attachment parsing in a sandboxed backend or local companion app.
 - Add allowlist/denylist management.
 - Add an onboarding privacy screen.
 - Add test fixtures for safe, moderate, and dangerous examples.
+- Wire the visual spoofing detector model into the extension service worker automatically.

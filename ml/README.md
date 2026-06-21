@@ -1,6 +1,74 @@
-# Veyra Local URL Model
+# Veyra Local ML Models
 
-This folder wires the downloaded `XGBoostClassifier.pickle.dat` into Veyra as an optional local URL classifier.
+This folder wires local ML models into Veyra.
+
+## Email model
+
+The first trainable model is a TF-IDF + calibrated logistic regression email classifier. It uses:
+
+- subject
+- body text
+- sender
+- visible recipients
+- links
+- attachment names
+- exact-feature counts from Veyra
+
+Train it:
+
+```powershell
+python -m pip install -r ml\requirements.txt
+python ml\train_email_model.py --data ml\data\email_training.csv
+```
+
+Run the local email model server:
+
+```powershell
+python ml\email_model_server.py
+```
+
+The server listens at:
+
+- `GET http://127.0.0.1:8766/health`
+- `POST http://127.0.0.1:8766/analyze`
+
+Veyra already calls this endpoint from the extension service worker. Because it is localhost-only, the prototype can send email text to this local process for scoring. Do not point this endpoint at a cloud server unless you add consent, redaction, retention limits, and a privacy review.
+
+The included `ml\data\email_training.csv` is only a tiny demo dataset to prove the training flow works. Replace it with a real labeled dataset before trusting the model.
+
+## Visual spoofing detector
+
+This model is for emails, domains, URLs, and email body text that may contain visual impersonation. It returns:
+
+- binary label: `spoof` or `not-spoof`
+- probability from `0` to `1`
+- exact flagged characters/substrings with positions
+
+Generate synthetic training data:
+
+```powershell
+python ml\generate_spoof_data.py --out ml\data\spoof_training.csv
+```
+
+Train the Random Forest detector:
+
+```powershell
+python ml\train_spoof_detector.py --data ml\data\spoof_training.csv
+```
+
+Try it from the command line:
+
+```powershell
+python ml\spoof_cli.py "supp0rt@paypa1.com"
+python ml\spoof_cli.py "https://rnicrosoft.com/login"
+python ml\spoof_cli.py "Please verify at goοgle.com"
+```
+
+The beginner version uses only `scikit-learn`, `pandas`, and `numpy` for the model. The exact flagging logic is deterministic so users can see which characters triggered suspicion.
+
+## URL model
+
+This folder also wires the downloaded `XGBoostClassifier.pickle.dat` into Veyra as an optional local URL classifier.
 
 The Chrome extension cannot run a Python pickle directly. Instead, this local Flask server loads the model and exposes:
 

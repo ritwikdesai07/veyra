@@ -8,11 +8,26 @@ This build implements the seven AI/ML layers as local-first extension code with 
 - Built in: `src/risk_engine.js` now extracts URL feature vectors such as length, depth, HTTPS, shortener use, risky TLD, punycode, brand impersonation, and redirect parameters.
 - Real model slot: run `ml/url_model_server.py` or replace `LOCAL_MODEL_ENDPOINT`.
 
-## 2. Email content classifier
+## 2. Email content and header/context classifier
 
-- Built in: `src/risk_engine.js` has a local NLP-style intent layer for credential theft, business email compromise, malware delivery, and data access requests.
-- The output appears as `AI content intent` findings.
-- Real model slot: replace or augment this with an embedding classifier or small text transformer in a backend/local companion app.
+- Built in: `src/risk_engine.js` extracts sender, visible recipients, subject/header text, body text, links, and attachments from the Gmail DOM.
+- Built in: exact detectors handle confusable characters, punycode, mixed scripts, display-name/domain mismatch, Reply-To mismatch, Return-Path mismatch, and supplied SPF/DKIM/DMARC failures.
+- Built in: a local semantic feature layer compares the subject/header intent against the message body intent. Its output appears as `AI semantic evidence`.
+- Real model slot: replace or augment the local semantic layer with an embedding classifier or small transformer that classifies sender fit, content intent, and header/body mismatch.
+
+Confusable patterns now covered include:
+
+- `m` versus `rn`
+- `n` versus `ri`
+- `w` versus `vv`
+- `l`, `I`, `1`, `|`, and `!`
+- `o`, `0`, Greek omicron, and Cyrillic o
+- `a`, `e`, `c`, `p`, `x`, `y` versus Cyrillic or Greek lookalikes
+- `s` versus `5` or `$`
+- `cl` versus `d`
+- inserted dots/hyphens, doubled letters, missing letters through skeleton/edit-distance comparison
+- punycode domains such as `xn--...`
+- mixed-script domain labels
 
 ## 3. Sender relationship and anomaly AI
 
@@ -23,12 +38,13 @@ This build implements the seven AI/ML layers as local-first extension code with 
 ## 4. Website DOM and form classifier
 
 - Built in: `src/content_web.js` collects form fields, hidden inputs, iframes, external link hosts, and script hosts.
-- Built in: `src/risk_engine.js` scores suspicious website patterns such as payment fields outside checkout, secret fields without password inputs, and login pages with many external hosts.
+- Built in: `src/risk_engine.js` now turns website data into structured features and exact evidence instead of broad phishing rules.
+- Built in: exact evidence catches visual/domain impersonation, punycode, mixed scripts, and password forms without HTTPS.
 
 ## 5. Attachment and document model
 
 - Built in: `src/content_documents.js` sends link text, external host counts, script hosts, iframe counts, and attachment-like names.
-- Built in: `src/risk_engine.js` scores link-heavy documents with credential/urgency language and archive-plus-execution-lure patterns.
+- Built in: `src/risk_engine.js` now scores exact document/download object evidence such as executable files, active-content document types, visual impersonation in filenames, and linked-domain impersonation.
 - Production slot: parse PDFs/DOCX/XLSX in a sandboxed backend or local companion app, then pass extracted text, URLs, and macro/script metadata to `SCAN_SURFACE`.
 
 ## 6. AI risk report generator
