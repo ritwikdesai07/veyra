@@ -1,48 +1,48 @@
 {
   "model": "tfidf-logistic-regression-email-v1",
-  "rows": 12,
-  "train_rows": 9,
-  "test_rows": 3,
+  "rows": 35,
+  "train_rows": 28,
+  "test_rows": 7,
   "label_counts": {
-    "0": 6,
-    "1": 6
+    "0": 18,
+    "1": 17
   },
   "classification_report": {
     "0": {
-      "precision": 0.6666666666666666,
+      "precision": 0.8,
       "recall": 1.0,
-      "f1-score": 0.8,
-      "support": 2.0
+      "f1-score": 0.8888888888888888,
+      "support": 4.0
     },
     "1": {
-      "precision": 0.0,
-      "recall": 0.0,
-      "f1-score": 0.0,
-      "support": 1.0
-    },
-    "accuracy": 0.6666666666666666,
-    "macro avg": {
-      "precision": 0.3333333333333333,
-      "recall": 0.5,
-      "f1-score": 0.4,
+      "precision": 1.0,
+      "recall": 0.6666666666666666,
+      "f1-score": 0.8,
       "support": 3.0
+    },
+    "accuracy": 0.8571428571428571,
+    "macro avg": {
+      "precision": 0.9,
+      "recall": 0.8333333333333333,
+      "f1-score": 0.8444444444444444,
+      "support": 7.0
     },
     "weighted avg": {
-      "precision": 0.4444444444444444,
-      "recall": 0.6666666666666666,
-      "f1-score": 0.5333333333333333,
-      "support": 3.0
+      "precision": 0.8857142857142858,
+      "recall": 0.8571428571428571,
+      "f1-score": 0.8507936507936508,
+      "support": 7.0
     }
   },
   "confusion_matrix": [
     [
-      2,
+      4,
       0
     ],
     [
       1,
-      0
+      2
     ]
   ],
-  "roc_auc": 0.0
+  "roc_auc": 1.0
 }

@@ -14,11 +14,74 @@ MODEL_PATH = Path(os.environ.get("VEYRA_EMAIL_MODEL_PATH", DEFAULT_MODEL_PATH))
 app = Flask(__name__)
 bundle: dict[str, Any] | None = None
 
+STOP_TOPIC_WORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "by", "can", "did", "do", "does",
+    "for", "from", "has", "have", "hey", "hi", "i", "in", "is", "it", "just",
+    "know", "let", "me", "my", "of", "on", "or", "our", "please", "re", "soon",
+    "that", "the", "this", "to", "was", "we", "with", "you", "your",
+}
+
+TOPIC_CATEGORY_KEYWORDS = {
+    "security": {"alert", "breach", "compromise", "danger", "fraud", "hack", "malicious", "malware", "phishing", "risk", "scam", "security", "spoof", "suspicious", "threat", "virus"},
+    "finance": {"account", "bank", "billing", "card", "charge", "deposit", "invoice", "money", "pay", "payment", "payroll", "refund", "subscription", "tax", "wire"},
+    "credentials": {"2fa", "code", "credential", "login", "otp", "password", "reset", "signin", "verify"},
+    "work": {"agenda", "calendar", "client", "contract", "deadline", "document", "meeting", "memo", "project", "proposal", "report", "schedule", "task"},
+    "social": {"birthday", "coffee", "dinner", "family", "free", "hang", "lunch", "party", "plan", "weekend"},
+    "food": {"cream", "dessert", "food", "ice", "sprinkle", "sprinkles", "summer", "treat", "vanilla"},
+    "promo": {"coupon", "deal", "discount", "offer", "promo", "sale"},
+}
+
+SENSITIVE_TOPIC_CATEGORIES = {"security", "finance", "credentials"}
+
 
 def as_text_list(value: Any) -> str:
     if isinstance(value, list):
         return " ".join(str(item) for item in value)
     return str(value or "")
+
+
+def topic_keywords(value: str) -> set[str]:
+    words = (
+        str(value or "")
+        .lower()
+        .replace("https://", " ")
+        .replace("http://", " ")
+    )
+    for char in ",.;:!?()[]{}<>\"'":
+        words = words.replace(char, " ")
+    return {
+        word.strip()
+        for word in words.split()
+        if len(word.strip()) >= 3 and word.strip() not in STOP_TOPIC_WORDS
+    }
+
+
+def topic_categories(words: set[str]) -> set[str]:
+    categories: set[str] = set()
+    for category, keywords in TOPIC_CATEGORY_KEYWORDS.items():
+        if any(word == keyword or word.startswith(keyword) or keyword.startswith(word) for word in words for keyword in keywords):
+            categories.add(category)
+    return categories
+
+
+def derived_topic_features(subject: str, body: str) -> tuple[float, int]:
+    subject_words = topic_keywords(subject)
+    body_words = topic_keywords(body)
+    if not subject_words or not body_words:
+        return 0.0, 0
+
+    overlap = len(subject_words & body_words) / max(1, len(subject_words | body_words))
+    subject_categories = topic_categories(subject_words)
+    body_categories = topic_categories(body_words)
+    shared_categories = subject_categories & body_categories
+    sensitive_conflict = int(
+        not shared_categories
+        and (
+            bool(subject_categories & SENSITIVE_TOPIC_CATEGORIES)
+            or bool(body_categories & SENSITIVE_TOPIC_CATEGORIES)
+        )
+    )
+    return float(overlap), sensitive_conflict
 
 
 def extract_record(payload: dict[str, Any]) -> dict[str, Any]:
@@ -27,10 +90,20 @@ def extract_record(payload: dict[str, Any]) -> dict[str, Any]:
     links = payload.get("links") or []
     attachments = payload.get("attachments") or []
     finding_ids = payload.get("findingIds") or []
+    has_topic_mismatch = any(
+        "header-content-intent-mismatch" in str(item)
+        or "subject-body-topic-distance" in str(item)
+        or "topic-distance" in str(item)
+        for item in finding_ids
+    )
+
+    subject = str(payload.get("title") or payload.get("subject") or "")
+    body = str(payload.get("text") or "")
+    overlap, sensitive_conflict = derived_topic_features(subject, body)
 
     record = {
-        "subject": str(payload.get("title") or payload.get("subject") or ""),
-        "body": str(payload.get("text") or ""),
+        "subject": subject,
+        "body": body,
         "sender": str(payload.get("sender") or email_features.get("senderHost") or ""),
         "recipients": as_text_list(payload.get("recipients") or []),
         "links": as_text_list(links),
@@ -39,7 +112,9 @@ def extract_record(payload: dict[str, Any]) -> dict[str, Any]:
         "attachment_count": len(attachments),
         "sender_confusable_count": len(email_features.get("senderConfusables") or []),
         "domain_mismatch_count": sum(1 for item in finding_ids if "mismatch" in str(item)),
-        "header_body_mismatch": 1 if "header-content-intent-mismatch" in finding_ids else 0,
+        "header_body_mismatch": 1 if has_topic_mismatch else 0,
+        "subject_body_overlap": overlap,
+        "sensitive_topic_conflict": sensitive_conflict,
     }
     record["combined_text"] = (
         "subject: " + record["subject"]

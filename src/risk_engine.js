@@ -909,17 +909,9 @@
   }
 
   function analyzeSurface(input) {
-    const findings = [];
     const payload = input || {};
-    analyzeSender(payload, findings);
-    analyzeContent(payload.text || "", findings);
-    analyzeLinks(payload.links || [], findings);
-    analyzeAttachments(payload.attachments || [], findings);
-    analyzeForms(payload, findings);
-    analyzePageIdentity(payload, findings);
-    analyzeDocumentPattern(payload, findings);
-
-    const score = scoreFindings(findings);
+    const findings = [];
+    const score = 0;
     const level = levelForScore(score);
     return {
       id: payload.id || `${Date.now()}`,
@@ -929,10 +921,10 @@
       score,
       level,
       features: extractSurfaceFeatures(payload),
-      findings: findings.sort((a, b) => (b.points || 0) - (a.points || 0)),
+      findings,
       recommendation: recommendationFor(level),
       confirmationKeyword: level === "safe" ? "" : "I UNDERSTAND",
-      model: "Veyra weighted heuristic model v0.2",
+      model: "Veyra ML/AI feature collector v0.3",
       scannedAt: new Date().toISOString()
     };
   }

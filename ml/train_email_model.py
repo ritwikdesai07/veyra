@@ -22,7 +22,72 @@ NUMERIC_COLUMNS = [
     "sender_confusable_count",
     "domain_mismatch_count",
     "header_body_mismatch",
+    "subject_body_overlap",
+    "sensitive_topic_conflict",
 ]
+
+STOP_TOPIC_WORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "by", "can", "did", "do", "does",
+    "for", "from", "has", "have", "hey", "hi", "i", "in", "is", "it", "just",
+    "know", "let", "me", "my", "of", "on", "or", "our", "please", "re", "soon",
+    "that", "the", "this", "to", "was", "we", "with", "you", "your",
+}
+
+TOPIC_CATEGORY_KEYWORDS = {
+    "security": {"alert", "breach", "compromise", "danger", "fraud", "hack", "malicious", "malware", "phishing", "risk", "scam", "security", "spoof", "suspicious", "threat", "virus"},
+    "finance": {"account", "bank", "billing", "card", "charge", "deposit", "invoice", "money", "pay", "payment", "payroll", "refund", "subscription", "tax", "wire"},
+    "credentials": {"2fa", "code", "credential", "login", "otp", "password", "reset", "signin", "verify"},
+    "work": {"agenda", "calendar", "client", "contract", "deadline", "document", "meeting", "memo", "project", "proposal", "report", "schedule", "task"},
+    "social": {"birthday", "coffee", "dinner", "family", "free", "hang", "lunch", "party", "plan", "weekend"},
+    "food": {"cream", "dessert", "food", "ice", "sprinkle", "sprinkles", "summer", "treat", "vanilla"},
+    "promo": {"coupon", "deal", "discount", "offer", "promo", "sale"},
+}
+
+SENSITIVE_TOPIC_CATEGORIES = {"security", "finance", "credentials"}
+
+
+def topic_keywords(value: str) -> set[str]:
+    words = (
+        str(value or "")
+        .lower()
+        .replace("https://", " ")
+        .replace("http://", " ")
+    )
+    for char in ",.;:!?()[]{}<>\"'":
+        words = words.replace(char, " ")
+    return {
+        word.strip()
+        for word in words.split()
+        if len(word.strip()) >= 3 and word.strip() not in STOP_TOPIC_WORDS
+    }
+
+
+def topic_categories(words: set[str]) -> set[str]:
+    categories: set[str] = set()
+    for category, keywords in TOPIC_CATEGORY_KEYWORDS.items():
+        if any(word == keyword or word.startswith(keyword) or keyword.startswith(word) for word in words for keyword in keywords):
+            categories.add(category)
+    return categories
+
+
+def derived_topic_features(subject: str, body: str) -> tuple[float, int]:
+    subject_words = topic_keywords(subject)
+    body_words = topic_keywords(body)
+    if not subject_words or not body_words:
+        return 0.0, 0
+
+    overlap = len(subject_words & body_words) / max(1, len(subject_words | body_words))
+    subject_categories = topic_categories(subject_words)
+    body_categories = topic_categories(body_words)
+    shared_categories = subject_categories & body_categories
+    sensitive_conflict = int(
+        not shared_categories
+        and (
+            bool(subject_categories & SENSITIVE_TOPIC_CATEGORIES)
+            or bool(body_categories & SENSITIVE_TOPIC_CATEGORIES)
+        )
+    )
+    return float(overlap), sensitive_conflict
 
 
 def normalize_label(value: object) -> int:
@@ -42,6 +107,11 @@ def ensure_columns(frame: pd.DataFrame) -> pd.DataFrame:
     frame = frame.copy()
     for column in TEXT_COLUMNS:
         frame[column] = frame[column].fillna("").astype(str)
+
+    derived = frame.apply(lambda row: derived_topic_features(row["subject"], row["body"]), axis=1)
+    frame["subject_body_overlap"] = [value[0] for value in derived]
+    frame["sensitive_topic_conflict"] = [value[1] for value in derived]
+
     for column in NUMERIC_COLUMNS:
         if column not in frame.columns:
             frame[column] = 0

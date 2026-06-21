@@ -11,3 +11,26 @@ phishing,Shared document,Open the protected document and sign in with your email
 phishing,Account security alert,We detected suspicious activity. Verify your mailbox password within 24 hours.,support@paypaI.com,me@example.com,https://paypaI.com/security,,1,0,1,0,0
 phishing,Urgent invoice,Please pay this invoice today by wire transfer to the new account details.,ceo@gmail.com,accounting@example.com,,invoice.zip,0,1,0,0,0
 phishing,Storage full,Your mailbox storage is full. Login now to keep receiving messages.,it-helpdesk@examp1e.com,me@example.com,https://examp1e.com/mail,,1,0,1,0,0
+safe,Summer plans,Ice cream with vanilla and sprinkles sounds great this weekend.,friend@example.com,me@example.com,,,0,0,0,0,0
+safe,Project meeting,Can we move the client agenda review to Friday?,manager@example.com,me@example.com,,,0,0,0,0,0
+safe,Dinner tonight,Want to get pizza after class?,friend@example.com,me@example.com,,,0,0,0,0,0
+safe,Security update complete,Your password was changed successfully and no action is needed.,security@github.com,me@example.com,,,0,0,0,0,0
+safe,Invoice question,Can you check whether last month invoice was already paid?,vendor@example.com,accounting@example.com,,,0,0,0,0,0
+safe,Document shared,The report draft is attached for tomorrow meeting.,teacher@example.edu,student@example.com,,report.pdf,0,1,0,0,0
+safe,Coffee tomorrow,Are you free to grab coffee near campus tomorrow morning?,friend@example.com,me@example.com,,,0,0,0,0,0
+safe,Weekend plans,The family party is still happening Saturday afternoon.,family@example.com,me@example.com,,,0,0,0,0,0
+safe,Account notice,Your account profile was updated from your usual browser. No action is needed.,support@trustedapp.com,me@example.com,,,0,0,0,0,0
+safe,Payment received,We received your payment for invoice 1042. Thank you.,billing@knownvendor.com,accounting@example.com,,,0,0,0,0,0
+safe,This is a normal email,Hey Ritwik I was thinking about vanilla ice cream and colorful sprinkles.,ritwik@example.com,me@example.com,,,0,0,0,0,0
+safe,Malware class notes,Attached are notes from today cybersecurity class about malware examples.,teacher@example.edu,student@example.com,,notes.pdf,0,1,0,0,0
+phishing,This is a malicious email,Hey Ritwik I was thinking about vanilla ice cream and colorful sprinkles.,ritwik@example.com,me@example.com,,,0,0,0,0,1
+phishing,Security alert,Your summer party photos are ready to view here.,unknown@example-mail.com,me@example.com,https://example-mail.com/photos,,1,0,0,0,1
+phishing,Invoice due now,Can you meet for coffee near campus tomorrow morning?,ceo@gmail.com,accounting@example.com,,,0,0,0,0,1
+phishing,Password reset required,The family party is still happening Saturday afternoon.,support@security-mail.com,me@example.com,,,0,0,0,0,1
+phishing,Payroll update,The report draft is attached for tomorrow meeting.,payroll@company-support.com,me@example.com,,report.html,0,1,0,0,1
+phishing,Account locked,Ice cream with vanilla and sprinkles sounds great this weekend.,security@paypaI.com,me@example.com,https://paypaI.com/login,,1,0,1,0,1
+phishing,Wire transfer request,Can we move the client agenda review to Friday?,ceo@company-mail.net,finance@example.com,,,0,0,0,0,1
+phishing,Document shared,Open this secure document and enter your mailbox password to continue.,docs@googIe-drive.com,me@example.com,https://googIe-drive.com/doc,,1,0,1,0,0
+phishing,Voicemail received,Login with your email password to listen to the encrypted voicemail.,voicemail@office365-alerts.com,me@example.com,https://office365-alerts.com/play,,1,0,0,0,0
+phishing,Benefits enrollment,Confirm your SSN and bank information before benefits close today.,hr@benefits-update.com,me@example.com,https://benefits-update.com,,1,0,0,0,0
+phishing,Refund pending,Enter your card number to receive the pending refund.,billing@refund-center.com,me@example.com,https://refund-center.com,,1,0,0,0,0

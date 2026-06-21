@@ -7,10 +7,11 @@ Veyra is a hackathon-stage Chrome extension prototype for explainable phishing a
 - Manifest V3 Chrome extension scaffold.
 - Shared hybrid AI/ML feature engine for sender identity, recipient/context signals, subject-vs-body semantic mismatch, visual impersonation, links, attachments, and page/document objects.
 - Gmail content script that watches opened messages and renders a right-side risk bar.
+- Gmail inbox row risk bars near the date column, with hover details and full-message score sync after an email is opened.
 - Document/Drive/file content script that renders a compact document scan rail.
-- Website gate that briefly blocks a page, shows a small waiting game, scans visible page content/links/download-like URLs, then displays a short risk report.
+- Website gate that briefly blocks a page, shows a polished retro side-scrolling checkpoint game, scans visible page content/links/download-like URLs, then displays a short risk report.
 - Confirmation keyword flow for moderate and dangerous pages.
-- Popup dashboard with recent scans and prototype settings.
+- Popup dashboard with recent scans and ad-supported mode only. API keys are not entered through the popup.
 
 ## Load locally
 
@@ -20,7 +21,32 @@ Veyra is a hackathon-stage Chrome extension prototype for explainable phishing a
 4. Choose this folder: `C:\Users\ritwi_m2ofaxd\OneDrive\Documents\Coding\Njx Hackathon`.
 5. To test local files, open the extension details page and enable **Allow access to file URLs**.
 
-## Optional local ML model
+## Code-only ChatGPT configuration
+
+Veyra's ChatGPT topic comparison reads from a local ignored file:
+
+```text
+src\secrets.local.js
+```
+
+Create it from the example:
+
+```powershell
+Copy-Item src\secrets.local.example.js src\secrets.local.js
+```
+
+Then edit `src\secrets.local.js`:
+
+```js
+self.VEYRA_LOCAL_SECRETS = {
+  OPENAI_API_KEY: "your-rotated-openai-key",
+  OPENAI_MODEL: "gpt-5.5"
+};
+```
+
+`src\secrets.local.js` is ignored by Git. Do not commit real API keys. Reload the unpacked extension after editing this file.
+
+## Local ML models
 
 Veyra can call local ML classifiers when the model servers are running.
 
@@ -39,14 +65,23 @@ If your global Python install throws a pandas/numpy import error, use the virtua
 python -m pip install --force-reinstall pandas numpy
 ```
 
-Train and run the first email phishing model:
+Train and run the email phishing model:
 
 ```powershell
 python ml\train_email_model.py --data ml\data\email_training.csv
 python ml\email_model_server.py
 ```
 
-That starts `http://127.0.0.1:8766/analyze`, which the extension already uses for local AI/ML email scoring. The included CSV is a demo dataset only; replace it with real labeled email data before relying on the model.
+That starts `http://127.0.0.1:8766/analyze`, which Gmail scans use for local ML email scoring. The current model is a TF-IDF + calibrated logistic regression classifier trained on subject, body, sender, recipients, links, attachments, subject/body overlap, and sensitive topic-conflict features.
+
+The included CSV is still a small demo dataset, but it now includes examples for:
+
+- normal social/work/food emails
+- credential phishing
+- suspicious sender/link examples
+- subject/body mismatch examples, such as a security-themed subject with an unrelated casual body
+
+Replace it with real labeled email data before relying on the model in production.
 
 Generate, train, and test the visual spoofing detector:
 
@@ -74,9 +109,9 @@ Run the optional URL XGBoost model:
 python ml\url_model_server.py
 ```
 
-The server loads `C:\Users\ritwi_m2ofaxd\Downloads\XGBoostClassifier.pickle.dat` by default. If it is running, website URLs and links found in emails/documents can receive an extra `ML URL model` finding. If it is not running, Veyra silently falls back to the explainable JavaScript rules.
+The server loads `C:\Users\ritwi_m2ofaxd\Downloads\XGBoostClassifier.pickle.dat` by default. If it is running, website URLs and links found in emails/documents can receive an extra `ML URL model` finding.
 
-If it is not running, Veyra falls back to local feature evidence: visual confusables, sender/header alignment signals available from the page, semantic mismatch, and object context. If the pickle fails with an older-XGBoost serialization error, convert it from the original training environment:
+If the pickle fails with an older-XGBoost serialization error, convert it from the original training environment:
 
 ```powershell
 python ml\convert_legacy_xgboost.py C:\Users\ritwi_m2ofaxd\Downloads\XGBoostClassifier.pickle.dat --out ml\xgboost_url_model.json
@@ -86,17 +121,28 @@ python ml\url_model_server.py
 
 ## AI/ML layers now wired
 
-The prototype now includes local-first AI plumbing for URL features, email subject/body intent mismatch, sender anomaly memory, website DOM/form features, document/attachment object context, evidence-bound AI risk summaries, and user feedback labels.
+The prototype now includes local-first AI/ML plumbing for URL features, email phishing probability, visual spoofing probability, email subject/body topic distance, website DOM/form features, document/attachment object context, evidence-bound AI risk summaries, and user feedback labels.
 
 Read the implementation map in `docs/ai-implementation.md`.
 
-Optional local AI endpoint:
+Local email ML endpoint:
 
 ```text
 POST http://127.0.0.1:8766/analyze
 ```
 
-The extension sends email text to this endpoint only when it is running on localhost for local model scoring. Website/document payloads stay feature-focused. Do not point this endpoint to a cloud service without consent, redaction, retention limits, and a privacy review.
+The extension sends Gmail email text to this localhost endpoint for local model scoring. Website/document payloads stay feature-focused. Do not point this endpoint to a cloud service without consent, redaction, retention limits, and a privacy review.
+
+Current Gmail scoring flow:
+
+1. Extract visible Gmail sender, recipients, subject, body, links, and attachments from the DOM.
+2. Run the base Veyra feature collector.
+3. Score visible sender/link strings with the optional spoof model if `8767` is running.
+4. Score links with the optional URL model if `8765` is running.
+5. Compare subject/body meaning with ChatGPT when `src\secrets.local.js` has a key.
+6. Fall back to local topic-distance features when ChatGPT is unavailable.
+7. Send the full Gmail payload to the local email ML server at `8766` when running.
+8. Render the same final report score in the inbox row bar and opened-email side bar.
 
 ## Competitive landscape
 
@@ -126,11 +172,12 @@ Veyra should not compete as only another phishing detector. The stronger story i
 - A Chrome extension cannot reliably read every attachment or local document without user permission, file access, sandboxing, or a cloud/local analysis pipeline.
 - Gmail DOM scanning is brittle because Gmail markup changes. A production version should use the Gmail API or Workspace add-on model where possible.
 - Blocking every website with a waiting game may annoy users. Use risk-based gating, prefetching, allowlists, and fast local checks.
-- AI can hallucinate security claims. The report should cite concrete evidence and use deterministic checks alongside ML.
+- AI can hallucinate security claims. The report should cite concrete evidence, prefer local ML probabilities for scoring, and use LLM output mainly for semantic interpretation/explanation.
 - Ads beside security decisions can harm trust and privacy. If ads are used, never show them on high-risk reports, never target from scanned content, and prefer sponsorships or freemium.
 - Scanning private emails/documents creates a major privacy burden. The company needs data minimization, local processing, clear consent, encryption, retention limits, and enterprise controls.
 - Attackers can evade simple text/URL heuristics. Production needs reputation feeds, sandboxing, attachment detonation, OCR/visual similarity, redirect-chain analysis, and model evaluation.
 - The extension itself becomes a sensitive target. It needs least-privilege permissions, no remotely hosted code, signed releases, security review, and transparent data handling.
+- A Chrome extension source bundle is visible to users. Never commit production API keys or secrets inside tracked files; use a backend proxy or a local ignored prototype file.
 
 ## Next build steps
 
@@ -138,5 +185,6 @@ Veyra should not compete as only another phishing detector. The stronger story i
 - Add attachment parsing in a sandboxed backend or local companion app.
 - Add allowlist/denylist management.
 - Add an onboarding privacy screen.
-- Add test fixtures for safe, moderate, and dangerous examples.
-- Wire the visual spoofing detector model into the extension service worker automatically.
+- Add test fixtures for safe, moderate, and dangerous Gmail examples.
+- Add a one-command local dev runner that starts the email, spoof, and URL model servers together.
+- Replace the demo email training CSV with a larger labeled dataset and track false positives/false negatives from user feedback.

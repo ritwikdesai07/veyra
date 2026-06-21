@@ -13,6 +13,8 @@ The first trainable model is a TF-IDF + calibrated logistic regression email cla
 - links
 - attachment names
 - exact-feature counts from Veyra
+- subject/body keyword overlap
+- sensitive topic-conflict signals, such as a security-themed subject with an unrelated casual body
 
 Train it:
 
@@ -27,6 +29,12 @@ Run the local email model server:
 python ml\email_model_server.py
 ```
 
+The Gmail extension calls this server at `http://127.0.0.1:8766/analyze`.
+Keep it running while testing Gmail scans. The current model was trained with
+subject/body topic-mismatch examples so cases like a security-themed subject
+with an unrelated casual body can receive a calibrated ML risk score instead of
+a fixed rule score.
+
 The server listens at:
 
 - `GET http://127.0.0.1:8766/health`
@@ -34,7 +42,14 @@ The server listens at:
 
 Veyra already calls this endpoint from the extension service worker. Because it is localhost-only, the prototype can send email text to this local process for scoring. Do not point this endpoint at a cloud server unless you add consent, redaction, retention limits, and a privacy review.
 
-The included `ml\data\email_training.csv` is only a tiny demo dataset to prove the training flow works. Replace it with a real labeled dataset before trusting the model.
+The included `ml\data\email_training.csv` is still a small demo dataset, now with 35 rows. It includes safe social/work examples, credential phishing examples, spoofed sender/link examples, and subject/body mismatch examples. Replace it with a real labeled dataset before trusting the model.
+
+Current sanity-check behavior after training:
+
+- `this is a malicious email` + an ice-cream/sprinkles body scores around `82%` phishing probability.
+- `Summer plans` + an ice-cream/sprinkles body stays low.
+- `Project meeting` + a meeting body stays low.
+- Credential phishing with a spoofed sender scores high.
 
 ## Visual spoofing detector
 
@@ -156,4 +171,4 @@ Example metadata JSON:
 
 ## Extension Behavior
 
-If the server is running, Veyra adds an `ML URL model` finding when the XGBoost model predicts a suspicious URL. If the server is not running, the extension silently falls back to its explainable JavaScript rules.
+If the server is running, Veyra adds an `ML URL model` finding when the XGBoost model predicts a suspicious URL. If the server is not running, Veyra keeps the extracted URL features but does not add a URL-model finding.

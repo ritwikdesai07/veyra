@@ -52,29 +52,20 @@ chrome.runtime.sendMessage({ type: "GET_FEEDBACK_STATS" }, (response) => {
 
 chrome.storage.local.get({
   veyraSettings: {
-    adSupportedMode: false,
-    openaiApiKey: "",
-    openaiModel: "gpt-4.1-mini"
+    adSupportedMode: false
   }
 }, ({ veyraSettings }) => {
   const adMode = document.getElementById("ad-mode");
-  const openaiKey = document.getElementById("openai-key");
-  const openaiModel = document.getElementById("openai-model");
   const saveSettings = () => {
-    chrome.storage.local.set({
-      veyraSettings: {
-        ...veyraSettings,
-        adSupportedMode: adMode.checked,
-        openaiApiKey: openaiKey.value.trim(),
-        openaiModel: openaiModel.value.trim() || "gpt-4.1-mini"
-      }
+    const nextSettings = {
+      ...veyraSettings,
+      adSupportedMode: adMode.checked
+    };
+    chrome.storage.local.set({ veyraSettings: nextSettings }, () => {
+      Object.assign(veyraSettings, nextSettings);
     });
   };
 
   adMode.checked = Boolean(veyraSettings.adSupportedMode);
-  openaiKey.value = veyraSettings.openaiApiKey || "";
-  openaiModel.value = veyraSettings.openaiModel || "gpt-4.1-mini";
   adMode.addEventListener("change", saveSettings);
-  openaiKey.addEventListener("change", saveSettings);
-  openaiModel.addEventListener("change", saveSettings);
 });

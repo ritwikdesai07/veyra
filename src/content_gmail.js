@@ -19,6 +19,18 @@ function veyraRiskLabel(level) {
   return "Low";
 }
 
+function veyraEmailMatchKey(sender, subject) {
+  const senderKey = String(sender || "").toLowerCase().match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/)?.[0]
+    || String(sender || "").toLowerCase().replace(/\s+/g, " ").trim();
+  const subjectKey = String(subject || "")
+    .toLowerCase()
+    .replace(/^(re|fw|fwd):\s*/i, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 140);
+  return `${senderKey}|${subjectKey}`;
+}
+
 let veyraRuntimeInvalidated = false;
 
 function veyraCanUseRuntime() {
@@ -59,13 +71,25 @@ function veyraExtractGmailMessage() {
     title: subject,
     subject,
     sender,
+    matchKey: veyraEmailMatchKey(sender, subject),
     recipients,
     headerText: detailText,
-    text: `${detailText}\n${text}`.trim(),
+    text: text.trim(),
     links,
     attachments,
     url: location.href
   };
+}
+
+function veyraPrescanUrlFromHref(href) {
+  if (!href) return "";
+  try {
+    const url = new URL(href, location.href);
+    url.searchParams.set("veyra_prescan", "1");
+    return url.href;
+  } catch (_error) {
+    return "";
+  }
 }
 
 function veyraExtractRow(row) {
@@ -73,6 +97,7 @@ function veyraExtractRow(row) {
   const sender = senderNode?.getAttribute("email") || senderNode?.getAttribute("name") || senderNode?.innerText || "";
   const subject = row.querySelector(".bog, .y6 span[id], [data-thread-id] .bog")?.innerText || "";
   const snippet = row.querySelector(".y2, .y6")?.innerText || "";
+  const threadHref = row.querySelector("a[href*='#']")?.href || row.querySelector("a[href]")?.href || "";
   const attachments = [...row.querySelectorAll("[title], [aria-label]")]
     .map((node) => node.getAttribute("title") || node.getAttribute("aria-label") || "")
     .filter((value) => /\.(pdf|docx?|xlsx?|pptx?|zip|exe|js|scr|msi|docm|xlsm|html?)\b/i.test(value));
@@ -82,11 +107,14 @@ function veyraExtractRow(row) {
     id: `gmail-row-${id}`,
     surface: "email-preview",
     title: subject || "Inbox message",
+    subject,
     sender,
+    matchKey: veyraEmailMatchKey(sender, subject),
     text: `${subject} ${snippet}`,
     links: [],
     attachments,
-    url: location.href
+    url: location.href,
+    threadUrl: veyraPrescanUrlFromHref(threadHref)
   };
 }
 
@@ -110,15 +138,16 @@ function veyraModelRowsHtml(report) {
 
   const topic = report.topicMatch?.status === "ok" ? `
     <div class="veyra-gmail-tooltip-finding">
-      <b>OpenAI topic output</b>
+      <b>ChatGPT topic output</b>
       <span>${report.topicMatch.match ? "match" : "mismatch"} | ${veyraGmailEscape(report.topicMatch.model || "")}</span>
       <p>Header: ${veyraGmailEscape(report.topicMatch.headerTopic?.topic || "")} / ${veyraGmailEscape(report.topicMatch.headerTopic?.intent || "")}</p>
       <p>Body: ${veyraGmailEscape(report.topicMatch.bodyTopic?.topic || "")} / ${veyraGmailEscape(report.topicMatch.bodyTopic?.intent || "")}</p>
+      <p>Idea range: ${veyraGmailEscape(report.topicMatch.sharedIdeaRange || "not provided")} | Distance: ${Math.round(Number(report.topicMatch.topicDistance || 0) * 100)}%</p>
       <p>${veyraGmailEscape(report.topicMatch.reason || "")}</p>
     </div>
   ` : report.topicMatch?.status ? `
     <div class="veyra-gmail-tooltip-finding">
-      <b>OpenAI topic output</b>
+      <b>ChatGPT topic output</b>
       <span>${veyraGmailEscape(report.topicMatch.status)}</span>
       <p>${veyraGmailEscape(report.topicMatch.reason || "No topic model output.")}</p>
     </div>
@@ -148,6 +177,7 @@ function veyraTooltipHtml(report) {
       <strong>${veyraRiskLabel(report.level)} risk</strong>
       <span>${report.score}/100</span>
     </div>
+    ${report.fromFullEmailCache ? "<p>Full-email AI/ML score from the background cache.</p>" : ""}
     ${report.surface === "email-preview" ? "<p>Inbox preview score. Open the email for the full-message score.</p>" : ""}
     ${modelOutputHtml ? `<div class="veyra-gmail-tooltip-section">Raw model output</div>${modelOutputHtml}` : ""}
     ${exactHtml}
@@ -234,6 +264,23 @@ function veyraRenderRowRisk(row, report) {
   dateCell.insertBefore(bar, dateCell.firstChild);
 }
 
+function veyraSyncRowsWithFullReport(payload, report) {
+  const matchKey = payload.matchKey || veyraEmailMatchKey(payload.sender, payload.subject || payload.title);
+  if (!matchKey) return;
+
+  const rows = [...document.querySelectorAll("tr.zA, div[role='main'] tr[role='row']")];
+  rows.forEach((row) => {
+    const rowKey = row.dataset.veyraMatchKey || veyraExtractRow(row).matchKey;
+    if (rowKey !== matchKey) return;
+
+    row.dataset.veyraMatchKey = rowKey;
+    row.dataset.veyraRisk = report.level;
+    row.dataset.veyraScanned = "true";
+    row.dataset.veyraScanState = "done";
+    veyraRenderRowRisk(row, { ...report, surface: "email" });
+  });
+}
+
 function veyraRequestEmailPreview(payload, callback) {
   const fallback = () => {
     const report = window.VeyraRiskEngine?.analyzeSurface(payload);
@@ -267,15 +314,57 @@ function veyraRequestEmailPreview(payload, callback) {
   }
 }
 
+function veyraRequestCachedFullEmailReport(payload, callback) {
+  if (!veyraCanUseRuntime()) {
+    callback(null);
+    return;
+  }
+
+  try {
+    chrome.runtime.sendMessage({ type: "GET_EMAIL_FULL_REPORT", payload }, (response) => {
+      let runtimeError = null;
+      try {
+        runtimeError = chrome.runtime?.lastError;
+      } catch (error) {
+        veyraMarkRuntimeInvalidated(error);
+        runtimeError = error;
+      }
+      callback(runtimeError ? null : response?.report || null);
+    });
+  } catch (error) {
+    veyraMarkRuntimeInvalidated(error);
+    callback(null);
+  }
+}
+
+function veyraRequestBackgroundPrescan(payload) {
+  if (!payload.threadUrl || !veyraCanUseRuntime()) return;
+  try {
+    chrome.runtime.sendMessage({ type: "PRESCAN_EMAIL_THREAD", payload });
+  } catch (error) {
+    veyraMarkRuntimeInvalidated(error);
+  }
+}
+
 function veyraScanGmailRows() {
   const rows = [...document.querySelectorAll("tr.zA, div[role='main'] tr[role='row']")].slice(0, 80);
   rows.forEach((row) => {
-    if (row.dataset.veyraScanned === "true" || row.dataset.veyraScanState === "pending") return;
     const payload = veyraExtractRow(row);
+    const fingerprint = `${payload.matchKey}|${payload.text}|${payload.attachments.join(",")}`;
+    const scanAge = Date.now() - Number(row.dataset.veyraLastScanAt || 0);
+    if (row.dataset.veyraScanState === "pending") return;
+    if (
+      row.dataset.veyraScanned === "true"
+      && row.dataset.veyraFingerprint === fingerprint
+      && (row.dataset.veyraReportSource === "full-cache" || scanAge < 7000)
+    ) return;
     if (!payload.sender && !payload.text.trim()) return;
 
     row.dataset.veyraScanState = "pending";
-    veyraRequestEmailPreview(payload, (report) => {
+    row.dataset.veyraLastScanAt = String(Date.now());
+    row.dataset.veyraMatchKey = payload.matchKey || "";
+    row.dataset.veyraFingerprint = fingerprint;
+    const renderReport = (report) => {
       if (!report || !row.isConnected) {
         delete row.dataset.veyraScanState;
         return;
@@ -284,7 +373,17 @@ function veyraScanGmailRows() {
       row.dataset.veyraScanState = "done";
       row.dataset.veyraScanned = "true";
       row.dataset.veyraRisk = report.level;
+      row.dataset.veyraReportSource = report.fromFullEmailCache ? "full-cache" : "preview";
       veyraRenderRowRisk(row, report);
+    };
+
+    veyraRequestCachedFullEmailReport(payload, (cachedReport) => {
+      if (cachedReport) {
+        renderReport(cachedReport);
+        return;
+      }
+      veyraRequestBackgroundPrescan(payload);
+      veyraRequestEmailPreview(payload, renderReport);
     });
   });
 }
@@ -295,7 +394,7 @@ function veyraRenderGmailBar(report) {
   const label = `${veyraRiskLabel(report.level)} Risk`;
   const topModel = report.spoofMl?.results?.[0];
   const topicLine = report.topicMatch?.status === "ok"
-    ? `${report.topicMatch.match ? "Topic match" : "Topic mismatch"}: ${report.topicMatch.reason}`
+    ? `${report.topicMatch.match ? "Topic match" : "Topic mismatch"} (${Math.round(Number(report.topicMatch.topicDistance || 0) * 100)}% distance): ${report.topicMatch.reason}`
     : report.topicMatch?.reason || "";
   const primaryDetail = topModel
     ? `Spoof ML: ${Math.round(Number(topModel.spoof_probability || 0) * 100)}% on ${topModel.input}`
@@ -303,6 +402,7 @@ function veyraRenderGmailBar(report) {
   const bar = document.createElement("aside");
   bar.className = "veyra-email-bar";
   bar.innerHTML = `
+    <button class="veyra-close" type="button" aria-label="Close Veyra email scan">x</button>
     <strong>Veyra Email Scan</strong>
     <div class="veyra-meter"><div style="width:${report.score}%;background:${color}"></div></div>
     <div style="display:flex;justify-content:space-between;gap:10px">
@@ -311,10 +411,11 @@ function veyraRenderGmailBar(report) {
     </div>
     <p style="margin:10px 0 0;color:#4b5563;font-size:13px">${veyraGmailEscape(primaryDetail)}</p>
     ${topicLine ? `<p style="margin:8px 0 0;color:#475569;font-size:12px;line-height:1.42">${veyraGmailEscape(topicLine)}</p>` : ""}
-    <button class="veyra-button secondary" style="width:100%;margin-top:12px" type="button">View details</button>
+    <button class="veyra-button secondary veyra-email-details" style="width:100%;margin-top:12px" type="button">View details</button>
   `;
 
-  bar.querySelector("button").addEventListener("click", () => {
+  bar.querySelector(".veyra-close")?.addEventListener("click", () => bar.remove());
+  bar.querySelector(".veyra-email-details").addEventListener("click", () => {
     const detail = document.createElement("div");
     detail.className = "veyra-doc-rail";
     detail.style.top = "96px";
@@ -335,12 +436,21 @@ let veyraLastFingerprint = "";
 function veyraScanOpenedGmailMessage() {
   const payload = veyraExtractGmailMessage();
   const fingerprint = `${payload.title}|${payload.sender}|${payload.text.slice(0, 160)}`;
-  if (!payload.text || fingerprint === veyraLastFingerprint) return;
+  if (!payload.text) {
+    document.querySelector(".veyra-email-bar")?.remove();
+    document.querySelector(".veyra-doc-rail")?.remove();
+    veyraLastFingerprint = "";
+    return;
+  }
+  if (fingerprint === veyraLastFingerprint) return;
 
   veyraLastFingerprint = fingerprint;
   if (!veyraCanUseRuntime()) {
     const report = window.VeyraRiskEngine?.analyzeSurface(payload);
-    if (report) veyraRenderGmailBar(report);
+    if (report) {
+      veyraRenderGmailBar(report);
+      veyraSyncRowsWithFullReport(payload, report);
+    }
     return;
   }
 
@@ -355,15 +465,25 @@ function veyraScanOpenedGmailMessage() {
       }
       if (runtimeError || !report) {
         const fallbackReport = window.VeyraRiskEngine?.analyzeSurface(payload);
-        if (fallbackReport) veyraRenderGmailBar(fallbackReport);
+        if (fallbackReport) {
+          veyraRenderGmailBar(fallbackReport);
+          veyraSyncRowsWithFullReport(payload, fallbackReport);
+        }
         return;
       }
       veyraRenderGmailBar(report);
+      veyraSyncRowsWithFullReport(payload, report);
+      if (new URLSearchParams(location.search).get("veyra_prescan") === "1") {
+        chrome.runtime.sendMessage({ type: "EMAIL_PRESCAN_DONE", payload: { matchKey: payload.matchKey } });
+      }
     });
   } catch (error) {
     veyraMarkRuntimeInvalidated(error);
     const report = window.VeyraRiskEngine?.analyzeSurface(payload);
-    if (report) veyraRenderGmailBar(report);
+    if (report) {
+      veyraRenderGmailBar(report);
+      veyraSyncRowsWithFullReport(payload, report);
+    }
   }
 }
 
@@ -379,3 +499,4 @@ const veyraObserver = new MutationObserver(() => {
 
 veyraObserver.observe(document.body, { childList: true, subtree: true });
 window.setTimeout(veyraScanGmail, 900);
+window.setInterval(veyraScanGmailRows, 6000);

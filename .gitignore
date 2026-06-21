@@ -10,6 +10,14 @@ tmp/
 Thumbs.db
 *.log
 
+# Local secrets
+.env
+.env.*
+!.env.example
+secrets.json
+*.local.json
+src/secrets.local.js
+
 # Dependencies/build outputs if this grows into a packaged app
 node_modules/
 dist/

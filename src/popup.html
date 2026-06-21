@@ -40,19 +40,11 @@
       </section>
 
       <section class="settings">
-        <label class="stacked">
-          <span>OpenAI API key</span>
-          <input id="openai-key" type="password" placeholder="sk-...">
-        </label>
-        <label class="stacked">
-          <span>OpenAI model</span>
-          <input id="openai-model" type="text" placeholder="gpt-4.1-mini">
-        </label>
         <label>
           <span>Ad-supported AI mode</span>
           <input id="ad-mode" type="checkbox">
         </label>
-        <p>OpenAI is used only for opened-email header/body topic comparison. Prototype setting only; production should proxy and protect keys server-side.</p>
+        <p>ChatGPT is configured from local code in <code>src/secrets.local.js</code>. The key cannot be changed from this popup.</p>
       </section>
     </main>
     <script src="popup.js"></script>

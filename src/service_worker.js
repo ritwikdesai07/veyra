@@ -1,7 +1,13 @@
 importScripts("risk_engine.js");
+try {
+  importScripts("secrets.local.js");
+} catch (_error) {
+  self.VEYRA_LOCAL_SECRETS = self.VEYRA_LOCAL_SECRETS || {};
+}
 
 const ACTIVITY_KEY = "veyraRecentActivity";
 const FEEDBACK_KEY = "veyraFeedback";
+const EMAIL_REPORT_CACHE_KEY = "veyraEmailReportCache";
 const LOCAL_MODEL_ENDPOINT = "http://127.0.0.1:8765/score";
 const LOCAL_AI_ENDPOINT = "http://127.0.0.1:8766/analyze";
 const SAFE_HOSTS_KEY = "veyraSafeHosts";
@@ -9,6 +15,10 @@ const SENDER_MEMORY_KEY = "veyraSenderMemory";
 const SENDER_PROFILE_KEY = "veyraSenderProfiles";
 const SAFE_HOST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const SENDER_MEMORY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const OPENAI_ENDPOINT = "https://api.openai.com/v1/chat/completions";
+const DEFAULT_OPENAI_MODEL = "gpt-5.5";
+const LEGACY_AI_MODELS = new Set(["", "gemini-2.5-flash", "gpt-4.1-mini"]);
+const pendingEmailPrescans = new Map();
 
 async function getActivity() {
   const data = await chrome.storage.local.get({ [ACTIVITY_KEY]: [] });
@@ -33,6 +43,113 @@ async function getSenderProfiles() {
 async function getFeedback() {
   const data = await chrome.storage.local.get({ [FEEDBACK_KEY]: [] });
   return data[FEEDBACK_KEY];
+}
+
+async function getEmailReportCache() {
+  const data = await chrome.storage.local.get({ [EMAIL_REPORT_CACHE_KEY]: {} });
+  return data[EMAIL_REPORT_CACHE_KEY] || {};
+}
+
+function emailReportCacheKey(payload) {
+  return String(payload?.matchKey || `${senderKeyFor(payload?.sender)}|${String(payload?.subject || payload?.title || "").toLowerCase().trim()}`).slice(0, 260);
+}
+
+function emailReportSubjectKey(payload) {
+  return `subject|${String(payload?.subject || payload?.title || "").toLowerCase().replace(/^(re|fw|fwd):\s*/i, "").replace(/\s+/g, " ").trim()}`.slice(0, 220);
+}
+
+async function getCachedEmailReport(payload) {
+  const keys = [emailReportCacheKey(payload), emailReportSubjectKey(payload)].filter((key) => key && key !== "|" && key !== "subject|");
+  if (!keys.length) return null;
+
+  const cache = await getEmailReportCache();
+  const entry = keys.map((key) => cache[key]).find(Boolean);
+  if (!entry?.report || Date.now() - Number(entry.savedAt || 0) > 24 * 60 * 60 * 1000) return null;
+  return {
+    ...entry.report,
+    surface: payload?.surface || entry.report.surface,
+    fromFullEmailCache: true
+  };
+}
+
+async function saveEmailReportCache(payload, report) {
+  if (payload?.surface !== "email") return;
+  const keys = [emailReportCacheKey(payload), emailReportSubjectKey(payload)].filter((key) => key && key !== "|" && key !== "subject|");
+  if (!keys.length) return;
+
+  const cache = await getEmailReportCache();
+  const entry = {
+    savedAt: Date.now(),
+    report: {
+      ...report,
+      surface: "email",
+      cachedFrom: "full-email-scan"
+    }
+  };
+  keys.forEach((key) => {
+    cache[key] = entry;
+  });
+
+  const entries = Object.entries(cache)
+    .sort((a, b) => Number(b[1]?.savedAt || 0) - Number(a[1]?.savedAt || 0))
+    .slice(0, 200);
+  await chrome.storage.local.set({ [EMAIL_REPORT_CACHE_KEY]: Object.fromEntries(entries) });
+}
+
+function openEmailPrescanTab(payload) {
+  const threadUrl = String(payload?.threadUrl || "");
+  if (!threadUrl || !/^https:\/\/mail\.google\.com\//i.test(threadUrl)) {
+    return Promise.resolve({ ok: false, reason: "missing-thread-url" });
+  }
+
+  const key = emailReportCacheKey(payload) || emailReportSubjectKey(payload);
+  if (pendingEmailPrescans.has(key)) return Promise.resolve({ ok: true, reason: "already-pending" });
+
+  return new Promise((resolve) => {
+    chrome.tabs.create({ url: threadUrl, active: false }, (tab) => {
+      if (chrome.runtime.lastError || !tab?.id) {
+        resolve({ ok: false, reason: chrome.runtime.lastError?.message || "tab-create-failed" });
+        return;
+      }
+      pendingEmailPrescans.set(key, { tabId: tab.id, startedAt: Date.now() });
+      setTimeout(() => {
+        const pending = pendingEmailPrescans.get(key);
+        if (pending?.tabId === tab.id) {
+          pendingEmailPrescans.delete(key);
+          chrome.tabs.remove(tab.id, () => void chrome.runtime.lastError);
+        }
+      }, 45000);
+      resolve({ ok: true, tabId: tab.id });
+    });
+  });
+}
+
+function finishEmailPrescan(tabId) {
+  if (!tabId) return;
+  for (const [key, pending] of pendingEmailPrescans.entries()) {
+    if (pending.tabId === tabId) pendingEmailPrescans.delete(key);
+  }
+  chrome.tabs.remove(tabId, () => void chrome.runtime.lastError);
+}
+
+async function getSettings() {
+  const data = await chrome.storage.local.get({
+    veyraSettings: {
+      protectionEnabled: true,
+      confirmationKeyword: "I UNDERSTAND",
+      adSupportedMode: false,
+      localModelEndpoint: LOCAL_MODEL_ENDPOINT
+    }
+  });
+  const settings = data.veyraSettings || {};
+  const localSecrets = self.VEYRA_LOCAL_SECRETS || {};
+  return {
+    ...settings,
+    openaiApiKey: localSecrets.OPENAI_API_KEY || "",
+    openaiModel: LEGACY_AI_MODELS.has(String(localSecrets.OPENAI_MODEL || "").trim())
+      ? DEFAULT_OPENAI_MODEL
+      : (localSecrets.OPENAI_MODEL || DEFAULT_OPENAI_MODEL)
+  };
 }
 
 async function saveReport(report) {
@@ -291,11 +408,19 @@ function redactedPayloadForAi(payload, report) {
 async function fetchLocalAiAnalysis(payload, report) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 1200);
+  const bodyPayload = isEmailSurface(payload?.surface)
+    ? {
+        ...payload,
+        features: report.features || self.VeyraRiskEngine.extractSurfaceFeatures(payload || {}),
+        findingIds: report.findings.map((finding) => finding.id).slice(0, 20),
+        findingCategories: report.findings.map((finding) => finding.category).slice(0, 20)
+      }
+    : redactedPayloadForAi(payload, report);
   try {
     const response = await fetch(LOCAL_AI_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(redactedPayloadForAi(payload, report)),
+      body: JSON.stringify(bodyPayload),
       signal: controller.signal
     });
     if (!response.ok) return null;
@@ -338,6 +463,289 @@ function buildAiNarrative(report) {
     confidence: confidenceForReport(report),
     evidenceIds: top.map((finding) => finding.id)
   };
+}
+
+function extractEmailBodyText(payload) {
+  const subject = String(payload?.subject || payload?.title || "");
+  const text = String(payload?.text || "");
+  return text.replace(subject, "").trim().slice(0, 6000);
+}
+
+function normalizeTopicDistance(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return 1;
+  return Math.max(0, Math.min(1, number));
+}
+
+function parseOpenAiJson(content) {
+  const raw = String(content || "").trim();
+  try {
+    return JSON.parse(raw);
+  } catch (_error) {
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    try {
+      return JSON.parse(match[0]);
+    } catch (__error) {
+      return null;
+    }
+  }
+}
+
+const STOP_TOPIC_WORDS = new Set([
+  "a", "an", "and", "are", "as", "at", "be", "by", "can", "did", "do", "does", "for", "from", "has", "have", "hey", "hi", "i", "in", "is", "it", "just", "know", "let", "me", "my", "of", "on", "or", "our", "please", "re", "soon", "that", "the", "this", "to", "was", "we", "with", "you", "your"
+]);
+
+const TOPIC_CATEGORY_KEYWORDS = {
+  security: ["alert", "breach", "compromise", "compromised", "danger", "dangerous", "fraud", "hack", "hacked", "malicious", "malware", "phishing", "risk", "scam", "security", "spoof", "suspicious", "threat", "virus"],
+  finance: ["account", "bank", "billing", "card", "charge", "deposit", "invoice", "money", "pay", "payment", "payroll", "refund", "subscription", "tax", "wire"],
+  credentials: ["2fa", "code", "credential", "login", "otp", "password", "reset", "signin", "verify"],
+  work: ["agenda", "calendar", "client", "contract", "deadline", "document", "meeting", "memo", "project", "proposal", "report", "schedule", "task"],
+  social: ["birthday", "coffee", "dinner", "family", "free", "hang", "lunch", "party", "plan", "soon", "weekend"],
+  food: ["cream", "dessert", "food", "ice", "sprinkle", "sprinkles", "summer", "treat", "vanilla"],
+  promo: ["coupon", "deal", "discount", "offer", "promo", "sale"]
+};
+
+const SENSITIVE_TOPIC_CATEGORIES = new Set(["security", "finance", "credentials"]);
+
+function topicKeywords(value) {
+  return [...new Set(String(value || "")
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .split(/\s+/)
+    .map((word) => word.trim())
+    .filter((word) => word.length >= 3 && !STOP_TOPIC_WORDS.has(word))
+  )].slice(0, 12);
+}
+
+function lexicalTopicDistance(subject, body) {
+  const subjectWords = topicKeywords(subject);
+  const bodyWords = topicKeywords(body);
+  if (!subjectWords.length || !bodyWords.length) return 0.5;
+
+  const overlap = subjectWords.filter((word) => bodyWords.includes(word)).length;
+  const union = new Set([...subjectWords, ...bodyWords]).size || 1;
+  const jaccard = overlap / union;
+  if (jaccard > 0) return Math.max(0.15, 1 - jaccard);
+
+  return 0.9;
+}
+
+function topicCategories(words) {
+  const categories = new Set();
+  Object.entries(TOPIC_CATEGORY_KEYWORDS).forEach(([category, keywords]) => {
+    if (words.some((word) => keywords.some((keyword) => word === keyword || word.startsWith(keyword) || keyword.startsWith(word)))) {
+      categories.add(category);
+    }
+  });
+  return [...categories];
+}
+
+function localTopicDistance(subject, body) {
+  const subjectWords = topicKeywords(subject);
+  const bodyWords = topicKeywords(body);
+  if (!subjectWords.length || !bodyWords.length) {
+    return {
+      distance: 0.25,
+      reason: "Local fallback did not find enough topic words to judge a mismatch.",
+      subjectCategories: [],
+      bodyCategories: []
+    };
+  }
+
+  const subjectCategories = topicCategories(subjectWords);
+  const bodyCategories = topicCategories(bodyWords);
+  const sharedCategories = subjectCategories.filter((category) => bodyCategories.includes(category));
+  const sensitiveSubject = subjectCategories.some((category) => SENSITIVE_TOPIC_CATEGORIES.has(category));
+  const sensitiveBody = bodyCategories.some((category) => SENSITIVE_TOPIC_CATEGORIES.has(category));
+  const lexical = lexicalTopicDistance(subject, body);
+
+  if (sharedCategories.length) {
+    return {
+      distance: Math.min(0.35, lexical),
+      reason: `Local fallback found the same broad topic area: ${sharedCategories.join(", ")}.`,
+      subjectCategories,
+      bodyCategories
+    };
+  }
+
+  if (sensitiveSubject || sensitiveBody) {
+    return {
+      distance: 0.9,
+      reason: "Local fallback found a sensitive subject/body topic conflict.",
+      subjectCategories,
+      bodyCategories
+    };
+  }
+
+  if (subjectCategories.length && bodyCategories.length) {
+    return {
+      distance: 0.62,
+      reason: "Local fallback found different broad topic areas, but no sensitive action language.",
+      subjectCategories,
+      bodyCategories
+    };
+  }
+
+  return {
+    distance: lexical >= 0.9 ? 0.38 : Math.min(0.5, lexical),
+    reason: lexical >= 0.9
+      ? "Local fallback found no shared keywords, but no sensitive mismatch evidence."
+      : "Local fallback found partial keyword overlap.",
+    subjectCategories,
+    bodyCategories
+  };
+}
+
+function buildLocalTopicMatch(subject, body) {
+  const result = localTopicDistance(subject, body);
+  const distance = result.distance;
+  return {
+    status: "ok",
+    model: "Veyra local topic comparator",
+    headerTopic: {
+      topic: subject,
+      intent: result.subjectCategories.join(", ") || "general subject"
+    },
+    bodyTopic: {
+      topic: body,
+      intent: result.bodyCategories.join(", ") || "general body"
+    },
+    sharedIdeaRange: distance <= 0.55 ? "The subject and body are close enough for a low-risk semantic match." : "The subject and body appear to be in different broad topic areas.",
+    topicDistance: distance,
+    match: distance <= 0.55,
+    reason: result.reason
+  };
+}
+
+async function fetchOpenAiTopicMatch(payload) {
+  if (!isEmailSurface(payload?.surface)) return null;
+
+  const subject = String(payload?.subject || payload?.title || "").trim();
+  const body = extractEmailBodyText(payload);
+  if (!subject || !body.trim()) {
+    return { status: "skipped", reason: "Need both a subject and email body text for topic comparison." };
+  }
+
+  if (body.length < 40) {
+    return buildLocalTopicMatch(subject, body);
+  }
+
+  const settings = await getSettings();
+  const apiKey = String(settings.openaiApiKey || "").trim();
+  if (!apiKey) {
+    return buildLocalTopicMatch(subject, body);
+  }
+
+  const model = String(settings.openaiModel || DEFAULT_OPENAI_MODEL).trim() || DEFAULT_OPENAI_MODEL;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5500);
+  try {
+    const response = await fetch(OPENAI_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content: [
+              "You compare an email subject/header with the email body for broad semantic consistency.",
+              "Do not require exact keyword overlap. Treat different wording as safe when the subject and body are in the same general idea range.",
+              "Return JSON only with: headerTopic, bodyTopic, sharedIdeaRange, topicDistance, match, reason.",
+              "topicDistance is 0 for same idea, 0.35 for related but shifted, 0.65 for suspiciously different, and 1 for unrelated."
+            ].join(" ")
+          },
+          {
+            role: "user",
+            content: JSON.stringify({
+              subject,
+              headerText: String(payload?.headerText || "").slice(0, 1200),
+              body: body.slice(0, 6000)
+            })
+          }
+        ]
+      }),
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      const fallback = buildLocalTopicMatch(subject, body);
+      return {
+        ...fallback,
+        model: `${fallback.model} after ChatGPT HTTP ${response.status}`
+      };
+    }
+
+    const data = await response.json();
+    const parsed = parseOpenAiJson(data?.choices?.[0]?.message?.content);
+    if (!parsed) {
+      return {
+        ...buildLocalTopicMatch(subject, body),
+        model: "Veyra local topic comparator after invalid ChatGPT JSON"
+      };
+    }
+
+    const distance = normalizeTopicDistance(parsed.topicDistance);
+    return {
+      status: "ok",
+      model,
+      headerTopic: {
+        topic: String(parsed.headerTopic || subject).slice(0, 120),
+        intent: String(parsed.headerIntent || "").slice(0, 120)
+      },
+      bodyTopic: {
+        topic: String(parsed.bodyTopic || "").slice(0, 120),
+        intent: String(parsed.bodyIntent || "").slice(0, 120)
+      },
+      sharedIdeaRange: String(parsed.sharedIdeaRange || "").slice(0, 160),
+      topicDistance: distance,
+      match: Boolean(parsed.match) || distance <= 0.55,
+      reason: String(parsed.reason || "").slice(0, 260)
+    };
+  } catch (error) {
+    return {
+      ...buildLocalTopicMatch(subject, body),
+      model: error?.name === "AbortError"
+        ? "Veyra local topic comparator after ChatGPT timeout"
+        : "Veyra local topic comparator after ChatGPT error"
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function enrichReportWithOpenAiTopicMatch(report, payload) {
+  const topicMatch = await fetchOpenAiTopicMatch(payload);
+  if (!topicMatch) return report;
+
+  report.topicMatch = topicMatch;
+  if (topicMatch.status !== "ok") return report;
+
+  const distance = normalizeTopicDistance(topicMatch.topicDistance);
+  if (distance > 0.55) {
+    const severe = distance >= 0.78;
+    addServiceFinding(report, {
+      id: "chatgpt-subject-body-topic-distance",
+      severity: severe ? "high" : "medium",
+      points: severe ? 26 : Math.max(12, Math.round(12 + (distance - 0.55) * 48)),
+      category: "AI topic model",
+      where: payload?.subject || payload?.title || "Email subject",
+      detail: `ChatGPT estimated subject/body topic distance at ${Math.round(distance * 100)}%. ${topicMatch.reason}`,
+      advice: severe ? "Treat this as suspicious until the sender confirms the message through another channel." : "Read carefully and verify the request if it asks for action, files, payments, or credentials.",
+      source: topicMatch.model || "ChatGPT topic comparison"
+    });
+    recomputeReportRisk(report);
+  }
+
+  report.model = `${report.model} + ChatGPT broad topic comparison`;
+  return report;
 }
 
 async function enrichReportWithAi(report, payload) {
@@ -423,21 +831,27 @@ async function enrichReportWithSenderAnomaly(report, payload, senderMemoryEntry)
 async function buildSurfaceReport(payload, options = {}) {
   const surface = payload?.surface || "website";
   if (isEmailSurface(surface)) {
+    if (options.preview) {
+      const cachedReport = await getCachedEmailReport(payload);
+      if (cachedReport) return cachedReport;
+    }
+
     const senderKey = senderKeyFor(payload.sender);
     const senderMemory = await getSenderMemory();
     const senderMemoryEntry = senderKey ? senderMemory[senderKey] : null;
 
-    if (isFreshTrustedSender(senderMemoryEntry)) {
+    if (surface === "email" && isFreshTrustedSender(senderMemoryEntry)) {
       return buildKnownSenderPassReport(payload, senderMemoryEntry);
     }
 
     const report = self.VeyraRiskEngine.analyzeSurface(payload);
     await enrichReportWithLocalModel(report, payload, payload.url);
-    await enrichReportWithSenderAnomaly(report, payload, senderMemoryEntry);
-    report.framework = frameworkForEmail(report, payload, senderMemoryEntry);
+    await enrichReportWithOpenAiTopicMatch(report, payload);
     await enrichReportWithAi(report, payload);
+    report.framework = frameworkForEmail(report, payload, senderMemoryEntry);
     if (!options.preview) await updateSenderMemory(report, payload);
     if (!options.preview) await updateSenderProfile(report, payload);
+    if (!options.preview) await saveEmailReportCache(payload, report);
     return report;
   }
 
@@ -565,13 +979,18 @@ async function shouldGateWebsite(url) {
 }
 
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.local.set({
-    veyraSettings: {
-      protectionEnabled: true,
-      confirmationKeyword: "I UNDERSTAND",
-      adSupportedMode: false,
-      localModelEndpoint: LOCAL_MODEL_ENDPOINT
-    }
+  chrome.storage.local.get({
+    veyraSettings: {}
+  }, ({ veyraSettings }) => {
+    chrome.storage.local.set({
+      veyraSettings: {
+        protectionEnabled: true,
+        confirmationKeyword: "I UNDERSTAND",
+        adSupportedMode: false,
+        localModelEndpoint: LOCAL_MODEL_ENDPOINT,
+        ...veyraSettings
+      }
+    });
   });
 });
 
@@ -601,6 +1020,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       id: message.payload?.id || `email-preview-${Date.now()}`
     };
     buildSurfaceReport(payload, { preview: true }).then(sendResponse);
+    return true;
+  }
+
+  if (message?.type === "GET_EMAIL_FULL_REPORT") {
+    getCachedEmailReport(message.payload || {}).then((report) => sendResponse({ report }));
+    return true;
+  }
+
+  if (message?.type === "PRESCAN_EMAIL_THREAD") {
+    openEmailPrescanTab(message.payload || {}).then(sendResponse);
+    return true;
+  }
+
+  if (message?.type === "EMAIL_PRESCAN_DONE") {
+    finishEmailPrescan(sender.tab?.id);
+    sendResponse({ ok: true });
     return true;
   }
 
