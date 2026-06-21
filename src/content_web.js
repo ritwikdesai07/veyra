@@ -109,18 +109,18 @@ function veyraBuildGate() {
 
         <div class="veyra-game" tabindex="0">
           <div class="veyra-game-head">
-            <span>Sky Check Runner</span>
+            <span>Sky Check</span>
             <div class="veyra-game-stats">
-              <b>Distance <span id="veyra-score">0</span></b>
-              <b>Shield <span id="veyra-lives">3</span></b>
+              <b>Score <span id="veyra-score">0</span></b>
+              <b>Lives <span id="veyra-lives">3</span></b>
             </div>
           </div>
           <div class="veyra-game-stage">
-            <canvas id="veyra-game-canvas" class="veyra-canvas" width="720" height="300" aria-label="Sky Check Runner game"></canvas>
+            <canvas id="veyra-game-canvas" class="veyra-canvas" width="720" height="300" aria-label="Sky Check platformer game"></canvas>
           </div>
           <div class="veyra-game-help">
-            <span>Clean packets collected</span>
-            <span>Jump runner active</span>
+            <span>Arrow keys or A/D to move</span>
+            <span>Up, W, or Space to jump</span>
           </div>
         </div>
 
@@ -156,32 +156,105 @@ function veyraBuildGate() {
   return gate;
 }
 
+// ---- Level data -----------------------------------------------------------
+// A small hand-built platforming level. Coordinates are in world units;
+// the camera scrolls horizontally to follow the player. Platform y-values
+// are measured upward from the ground line.
+const VEYRA_LEVEL_WIDTH = 2400;
+const VEYRA_GROUND_Y = 244; // reference ground y at design height 300
+
+const VEYRA_START_PLATFORM_H = 56;
+
+function veyraBuildLevel() {
+  // The floor is continuous except at defined pits, so the player can always
+  // progress along the ground. Elevated platforms are optional bonus routes
+  // for extra orbs and are never required to cross a gap.
+  const pits = [
+    { x: 350, w: 50 },
+    { x: 900, w: 40 },
+    { x: 1080, w: 70 },
+    { x: 1230, w: 60 }
+  ];
+
+  const floorSpan = (from, to) => ({ x: from, y: 0, w: to - from, h: VEYRA_START_PLATFORM_H });
+  const floorSegments = [];
+  let cursor = 0;
+  pits.forEach((pit) => {
+    if (pit.x > cursor) floorSegments.push(floorSpan(cursor, pit.x));
+    cursor = pit.x + pit.w;
+  });
+  floorSegments.push(floorSpan(cursor, VEYRA_LEVEL_WIDTH));
+
+  // Elevated platforms only exist either (a) directly over a pit, where there
+  // is no floor underneath to collide with, or (b) high enough above the
+  // floor's top surface that a standing player passes cleanly underneath.
+  // Floor top surface sits at FLOOR_TOP; player height is PLAYER_H.
+  const FLOOR_TOP = VEYRA_GROUND_Y - VEYRA_START_PLATFORM_H; // 188
+  const PLAYER_H = 32;
+  const CLEARANCE = 14; // extra margin above player height
+  // "high enough above floor" means platform bottom sits at least
+  // PLAYER_H + CLEARANCE above FLOOR_TOP, i.e. platform bottom y-offset-from-ground >= PLAYER_H + CLEARANCE
+  const elevated = [
+    // over the first pit (350-400): floating platform, well above floor height
+    { x: 345, y: 100, w: 120, h: 16 },
+    // floating platform well above floor walking height (clearance run)
+    { x: 600, y: 110, w: 110, h: 16 },
+    // over the second pit (900-940)
+    { x: 890, y: 90, w: 70, h: 16 },
+    // over the third pit (1080-1150)
+    { x: 1070, y: 100, w: 100, h: 16 },
+    // over the fourth pit (1230-1290)
+    { x: 1220, y: 90, w: 90, h: 16 },
+    // floating platforms above floor walking height (clearance run)
+    { x: 1430, y: 110, w: 90, h: 16 },
+    { x: 1620, y: 130, w: 90, h: 16 },
+    { x: 1900, y: 110, w: 100, h: 16 }
+  ];
+
+  const platforms = [...floorSegments, ...elevated];
+  const hazards = [
+    { x: 480, y: 0, w: 24, h: 24 },
+    { x: 1950, y: 0, w: 24, h: 24 },
+    { x: 2150, y: 0, w: 24, h: 24 }
+  ];
+  const orbSpots = [
+    [380, 110], [430, 110], [630, 150], [680, 150],
+    [920, 100], [1100, 120], [1240, 105],
+    [1460, 150], [1500, 150], [1650, 170], [1690, 170],
+    [1930, 150], [1970, 150], [2100, 60], [2220, 60]
+  ];
+  const orbs = orbSpots.map(([x, y], id) => ({ x, y, r: 7, id, collected: false }));
+
+  return { platforms, pits, hazards, orbs, goalX: VEYRA_LEVEL_WIDTH - 60 };
+}
+
 function veyraStartGame(canvas) {
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
+  const level = veyraBuildLevel();
   const game = {
     canvas,
     ctx,
+    level,
     dpr: Math.max(1, Math.min(2, window.devicePixelRatio || 1)),
     width: 720,
     height: 300,
-    player: { x: 96, y: 0, width: 34, height: 42, vy: 0, grounded: true, squash: 0 },
-    packets: [],
-    threats: [],
-    clouds: [],
+    scale: 1,
+    camX: 0,
+    player: { x: 40, y: 0, width: 24, height: 32, vx: 0, vy: 0, grounded: true, facing: 1, squash: 0 },
+    spawnX: 40,
     sparks: [],
     keys: new Set(),
     score: 0,
     lives: 3,
+    won: false,
     frame: 0,
     last: 0,
     raf: 0,
-    spawnTimer: 0,
-    packetTimer: 0,
-    cloudTimer: 0,
-    groundY: 244,
-    speed: 3.1
+    groundY: VEYRA_GROUND_Y,
+    hurtTimer: 0
   };
+  game.player.y = game.groundY - VEYRA_START_PLATFORM_H - game.player.height;
   game.reducedMotion = Boolean(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   veyraState.game = game;
 
@@ -189,76 +262,29 @@ function veyraStartGame(canvas) {
     const rect = canvas.getBoundingClientRect();
     game.width = rect.width || 720;
     game.height = rect.height || 300;
-    game.groundY = Math.max(180, game.height - 58);
-    if (game.player.grounded) game.player.y = game.groundY - game.player.height;
+    game.scale = game.height / 300;
     canvas.width = Math.floor(game.width * game.dpr);
     canvas.height = Math.floor(game.height * game.dpr);
     ctx.setTransform(game.dpr, 0, 0, game.dpr, 0, 0);
     ctx.imageSmoothingEnabled = true;
   }
 
-  function spawnThreat() {
-    game.threats.push({
-      x: game.width + 28,
-      y: game.groundY - 34,
-      width: 24 + Math.random() * 16,
-      height: 30 + Math.random() * 16,
-      vx: game.speed + Math.random() * 0.8,
-      label: Math.random() > 0.5 ? "phish" : "spoof"
-    });
-  }
-
-  function spawnPacket() {
-    game.packets.push({
-      x: game.width + 20,
-      y: game.groundY - 92 - Math.random() * 58,
-      r: 10,
-      vx: game.speed
-    });
-  }
-
-  function spawnCloud() {
-    game.clouds.push({
-      x: game.width + 70,
-      y: 32 + Math.random() * 72,
-      scale: 0.8 + Math.random() * 0.8,
-      vx: 0.45 + Math.random() * 0.35
-    });
-  }
-
-  function drawRoundedRect(x, y, width, height, radius, color) {
+  function drawRect(x, y, w, h, color) {
     ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.roundRect(x, y, width, height, radius);
-    ctx.fill();
+    ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
   }
 
   function rectHit(a, b) {
-    return a.x < b.x + b.width
-      && a.x + a.width > b.x
-      && a.y < b.y + b.height
-      && a.y + a.height > b.y;
+    return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
   }
 
-  function jump() {
-    const player = game.player;
-    if (!player.grounded) return;
-    player.vy = -12.8;
-    player.grounded = false;
-    player.squash = 8;
-    addSpark(player.x + player.width / 2, game.groundY, "#38bdf8");
+  function platRect(p) {
+    return { x: p.x, y: game.groundY - p.y - p.h, width: p.w, height: p.h };
   }
 
   function addSpark(x, y, color) {
-    for (let i = 0; i < 8; i += 1) {
-      game.sparks.push({
-        x,
-        y,
-        vx: (Math.random() - 0.5) * 5,
-        vy: (Math.random() - 0.5) * 5,
-        life: 28,
-        color
-      });
+    for (let i = 0; i < 7; i += 1) {
+      game.sparks.push({ x, y, vx: (Math.random() - 0.5) * 4.5, vy: (Math.random() - 0.5) * 4.5 - 1, life: 24, color });
     }
   }
 
@@ -269,170 +295,248 @@ function veyraStartGame(canvas) {
     if (lives) lives.textContent = String(game.lives);
   }
 
+  function jump() {
+    const player = game.player;
+    if (!player.grounded || game.won) return;
+    player.vy = -11.6;
+    player.grounded = false;
+    player.squash = 6;
+    addSpark(player.x + player.width / 2, player.y + player.height, "#2563eb");
+  }
+
+  function respawn(losesLife) {
+    if (losesLife) {
+      game.lives = Math.max(0, game.lives - 1);
+      updateHud();
+    }
+    const player = game.player;
+    player.x = game.spawnX;
+    player.y = game.groundY - VEYRA_START_PLATFORM_H - player.height;
+    player.vx = 0;
+    player.vy = 0;
+    player.grounded = true;
+    game.hurtTimer = 40;
+    if (game.lives === 0) {
+      game.lives = 3;
+      game.score = Math.max(0, game.score - 50);
+      updateHud();
+    }
+  }
+
   function update(delta) {
     const scale = delta / 16;
     const player = game.player;
-    if (game.keys.has("arrowup") || game.keys.has("w") || game.keys.has("space")) jump();
 
-    player.vy += 0.72 * scale;
-    player.y += player.vy * scale;
-    player.squash = Math.max(0, player.squash - delta * 0.08);
-    if (player.y >= game.groundY - player.height) {
-      player.y = game.groundY - player.height;
-      player.vy = 0;
-      player.grounded = true;
-    }
-
-    game.spawnTimer -= delta;
-    game.packetTimer -= delta;
-    game.cloudTimer -= delta;
-    game.speed = Math.min(5.8, game.speed + delta * 0.0009);
-    if (game.spawnTimer <= 0) {
-      spawnThreat();
-      game.spawnTimer = 880 + Math.random() * 680;
-    }
-    if (game.packetTimer <= 0) {
-      spawnPacket();
-      game.packetTimer = 720 + Math.random() * 720;
-    }
-    if (game.cloudTimer <= 0) {
-      spawnCloud();
-      game.cloudTimer = 1200 + Math.random() * 1200;
-    }
-
-    game.threats.forEach((threat) => {
-      threat.x -= threat.vx * scale;
-    });
-
-    game.packets.forEach((packet) => {
-      packet.x -= packet.vx * scale;
-      packet.y += Math.sin((game.frame + packet.x) / 18) * 0.35;
-    });
-
-    game.clouds.forEach((cloud) => {
-      cloud.x -= cloud.vx * scale;
-    });
-
-    const playerBox = { x: player.x + 5, y: player.y + 4, width: player.width - 10, height: player.height - 6 };
-    game.threats = game.threats.filter((threat) => {
-      if (rectHit(playerBox, threat)) {
-        game.lives = Math.max(0, game.lives - 1);
-        addSpark(threat.x + threat.width / 2, threat.y + threat.height / 2, "#ef4444");
-        updateHud();
-        return false;
+    if (!game.won) {
+      const left = game.keys.has("arrowleft") || game.keys.has("a");
+      const right = game.keys.has("arrowright") || game.keys.has("d");
+      const accel = 0.85;
+      const maxSpeed = 4.3;
+      if (left && !right) {
+        player.vx = Math.max(-maxSpeed, player.vx - accel * scale);
+        player.facing = -1;
+      } else if (right && !left) {
+        player.vx = Math.min(maxSpeed, player.vx + accel * scale);
+        player.facing = 1;
+      } else {
+        player.vx *= Math.pow(0.78, scale);
+        if (Math.abs(player.vx) < 0.05) player.vx = 0;
       }
-      return threat.x > -40;
-    });
+      if (game.keys.has("arrowup") || game.keys.has("w") || game.keys.has("space")) jump();
 
-    game.packets = game.packets.filter((packet) => {
-      const packetBox = { x: packet.x - packet.r, y: packet.y - packet.r, width: packet.r * 2, height: packet.r * 2 };
-      if (rectHit(playerBox, packetBox)) {
-        game.score += 25;
-        addSpark(packet.x, packet.y, "#0ea5e9");
-        updateHud();
-        return false;
+      player.vy = Math.min(13, player.vy + 0.62 * scale);
+      player.squash = Math.max(0, player.squash - delta * 0.07);
+
+      // Horizontal move + side collisions
+      const prevX = player.x;
+      player.x = Math.max(6, Math.min(VEYRA_LEVEL_WIDTH - player.width - 6, player.x + player.vx * scale));
+      level.platforms.forEach((p) => {
+        const r = platRect(p);
+        const vertOverlap = player.y + player.height > r.y + 2 && player.y < r.y + r.height - 2;
+        if (vertOverlap && rectHit({ x: player.x, y: player.y, width: player.width, height: player.height }, r)) {
+          if (prevX + player.width <= r.x + 1) player.x = r.x - player.width;
+          else if (prevX >= r.x + r.width - 1) player.x = r.x + r.width;
+          player.vx = 0;
+        }
+      });
+
+      // Vertical move + top/bottom collisions
+      const prevY = player.y;
+      let newY = prevY + player.vy * scale;
+      player.grounded = false;
+      level.platforms.forEach((p) => {
+        const r = platRect(p);
+        const horizOverlap = player.x + player.width > r.x && player.x < r.x + r.width;
+        if (!horizOverlap) return;
+        const prevBottom = prevY + player.height;
+        const newBottom = newY + player.height;
+        if (player.vy >= 0 && prevBottom <= r.y + 1 && newBottom >= r.y) {
+          newY = r.y - player.height;
+          player.vy = 0;
+          player.grounded = true;
+        } else if (player.vy < 0 && prevY >= r.y + r.height - 1 && newY <= r.y + r.height) {
+          newY = r.y + r.height;
+          player.vy = 0.5;
+        }
+      });
+      player.y = newY;
+
+      // Pit fall
+      const onPit = level.pits.some((pit) => player.x + player.width > pit.x && player.x < pit.x + pit.w);
+      if (onPit && player.y > game.groundY + 40) respawn(true);
+
+      // Hazards
+      const playerBox = { x: player.x + 3, y: player.y + 3, width: player.width - 6, height: player.height - 6 };
+      if (game.hurtTimer <= 0) {
+        level.hazards.forEach((hz) => {
+          const r = { x: hz.x, y: game.groundY - hz.y - hz.h, width: hz.w, height: hz.h };
+          if (rectHit(playerBox, r)) {
+            addSpark(r.x + r.w / 2, r.y + r.h / 2, "#ef4444");
+            respawn(true);
+          }
+        });
       }
-      return packet.x > -30;
-    });
-    game.clouds = game.clouds.filter((cloud) => cloud.x > -130);
+
+      // Orbs
+      level.orbs.forEach((orb) => {
+        if (orb.collected) return;
+        const r = { x: orb.x - orb.r, y: game.groundY - orb.y - orb.r, width: orb.r * 2, height: orb.r * 2 };
+        if (rectHit(playerBox, r)) {
+          orb.collected = true;
+          game.score += 10;
+          addSpark(orb.x, game.groundY - orb.y, "#0ea5e9");
+          updateHud();
+        }
+      });
+
+      // Goal
+      if (player.x + player.width >= level.goalX) {
+        game.won = true;
+        game.score += 100;
+        updateHud();
+      }
+
+      if (game.hurtTimer > 0) game.hurtTimer -= delta;
+    }
+
+    const targetCam = player.x - game.width / (2 * game.scale);
+    game.camX += (targetCam - game.camX) * Math.min(1, 0.12 * scale);
+    game.camX = Math.max(0, Math.min(VEYRA_LEVEL_WIDTH - game.width / game.scale, game.camX));
 
     game.sparks.forEach((spark) => {
       spark.x += spark.vx;
       spark.y += spark.vy;
+      spark.vy += 0.2;
       spark.life -= 1;
     });
     game.sparks = game.sparks.filter((spark) => spark.life > 0);
+  }
 
-    if (game.lives === 0) {
-      game.score = Math.max(0, game.score - 1);
-      if (game.frame % 90 === 0) game.lives = 3;
-      updateHud();
-    } else if (game.frame % 8 === 0) {
-      game.score += 1;
-      updateHud();
-    }
+  function worldToScreenX(x) {
+    return (x - game.camX) * game.scale;
+  }
+  function toScreenY(y) {
+    return y * game.scale;
   }
 
   function render() {
     const { width, height } = game;
     ctx.clearRect(0, 0, width, height);
-    const sky = ctx.createLinearGradient(0, 0, 0, height);
-    sky.addColorStop(0, "#e0f2fe");
-    sky.addColorStop(0.62, "#f8fbff");
-    sky.addColorStop(1, "#ffffff");
-    ctx.fillStyle = sky;
-    ctx.fillRect(0, 0, width, height);
+    drawRect(0, 0, width, height, "#f8fbff");
 
-    game.clouds.forEach((cloud) => {
-      ctx.fillStyle = "rgba(255, 255, 255, 0.92)";
-      ctx.beginPath();
-      ctx.ellipse(cloud.x, cloud.y, 38 * cloud.scale, 14 * cloud.scale, 0, 0, Math.PI * 2);
-      ctx.ellipse(cloud.x + 26 * cloud.scale, cloud.y + 2, 30 * cloud.scale, 12 * cloud.scale, 0, 0, Math.PI * 2);
-      ctx.ellipse(cloud.x - 22 * cloud.scale, cloud.y + 4, 24 * cloud.scale, 10 * cloud.scale, 0, 0, Math.PI * 2);
-      ctx.fill();
-    });
-
-    drawRoundedRect(0, game.groundY, width, height - game.groundY, 0, "#dbeafe");
-    ctx.strokeStyle = "#93c5fd";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(0, game.groundY + 1);
-    ctx.lineTo(width, game.groundY + 1);
-    ctx.stroke();
-    for (let x = -((game.frame * game.speed) % 44); x < width; x += 44) {
-      drawRoundedRect(x, game.groundY + 20, 24, 4, 2, "#bfdbfe");
+    ctx.fillStyle = "#e8f1ff";
+    for (let i = 0; i < 14; i += 1) {
+      const wx = i * 220 - ((game.camX * 0.3) % 220);
+      ctx.fillRect(wx, height * 0.18, 2, height * 0.5);
     }
 
-    game.packets.forEach((packet) => {
+    const groundScreenY = toScreenY(game.groundY);
+    drawRect(0, groundScreenY, width, height - groundScreenY, "#eef6ff");
+    ctx.strokeStyle = "#bfdbfe";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, groundScreenY);
+    ctx.lineTo(width, groundScreenY);
+    ctx.stroke();
+
+    level.platforms.forEach((p) => {
+      const r = platRect(p);
+      const sx = worldToScreenX(r.x);
+      if (sx + r.width * game.scale < -10 || sx > width + 10) return;
+      drawRect(sx, toScreenY(r.y), r.width * game.scale, r.height * game.scale, "#dbeafe");
+      drawRect(sx, toScreenY(r.y), r.width * game.scale, 4 * game.scale, "#60a5fa");
+    });
+
+    level.pits.forEach((pit) => {
+      const sx = worldToScreenX(pit.x);
+      if (sx + pit.w * game.scale < -10 || sx > width + 10) return;
+      ctx.clearRect(sx, groundScreenY, pit.w * game.scale, height - groundScreenY);
+      drawRect(sx, groundScreenY, pit.w * game.scale, 3, "#94a3b8");
+    });
+
+    level.hazards.forEach((hz) => {
+      const wy = game.groundY - hz.y - hz.h;
+      const sx = worldToScreenX(hz.x);
+      if (sx + hz.w * game.scale < -10 || sx > width + 10) return;
+      drawRect(sx, toScreenY(wy), hz.w * game.scale, hz.h * game.scale, "#ef4444");
+      ctx.fillStyle = "#ffffff";
+      ctx.font = `bold ${Math.max(9, 12 * game.scale)}px Inter, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.fillText("!", sx + (hz.w * game.scale) / 2, toScreenY(wy) + (hz.h * game.scale) / 2 + 4 * game.scale);
+      ctx.textAlign = "left";
+    });
+
+    level.orbs.forEach((orb) => {
+      if (orb.collected) return;
+      const sx = worldToScreenX(orb.x);
+      if (sx < -12 || sx > width + 12) return;
+      const sy = toScreenY(game.groundY - orb.y);
+      const bob = Math.sin((game.frame + orb.id * 30) / 22) * 3 * game.scale;
       ctx.fillStyle = "#0ea5e9";
       ctx.beginPath();
-      ctx.arc(packet.x, packet.y, packet.r, 0, Math.PI * 2);
+      ctx.arc(sx, sy + bob, orb.r * game.scale, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = "#ffffff";
       ctx.beginPath();
-      ctx.arc(packet.x - 3, packet.y - 3, 3, 0, Math.PI * 2);
+      ctx.arc(sx - 2 * game.scale, sy + bob - 2 * game.scale, 2.2 * game.scale, 0, Math.PI * 2);
       ctx.fill();
     });
 
-    game.threats.forEach((threat) => {
-      drawRoundedRect(threat.x, threat.y, threat.width, threat.height, 8, "#fecaca");
-      drawRoundedRect(threat.x + 5, threat.y + 5, threat.width - 10, threat.height - 10, 6, "#ef4444");
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "bold 14px Inter, sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("!", threat.x + threat.width / 2, threat.y + threat.height / 2 + 5);
-    });
-    ctx.textAlign = "left";
+    const goalSx = worldToScreenX(level.goalX);
+    if (goalSx > -20 && goalSx < width + 20) {
+      drawRect(goalSx, groundScreenY - 80 * game.scale, 3 * game.scale, 80 * game.scale, "#1e3a8a");
+      drawRect(goalSx + 3 * game.scale, groundScreenY - 80 * game.scale, 26 * game.scale, 18 * game.scale, "#2563eb");
+    }
 
     const player = game.player;
-    const squash = player.squash;
-    drawRoundedRect(player.x, player.y + squash, player.width, player.height - squash, 10, "#2563eb");
-    drawRoundedRect(player.x + 6, player.y - 14 + squash, player.width - 12, 18, 9, "#60a5fa");
-    drawRoundedRect(player.x + 4, player.y + player.height - 4, 12, 8, 4, "#1d4ed8");
-    drawRoundedRect(player.x + player.width - 16, player.y + player.height - 4, 12, 8, 4, "#1d4ed8");
+    const flashHurt = game.hurtTimer > 0 && Math.floor(game.frame / 4) % 2 === 0;
+    const psx = worldToScreenX(player.x);
+    const psy = toScreenY(player.y + player.squash);
+    const pw = player.width * game.scale;
+    const ph = (player.height - player.squash) * game.scale;
+    drawRect(psx, psy, pw, ph, flashHurt ? "#fca5a5" : "#2563eb");
+    drawRect(psx + pw * 0.18, psy - ph * 0.3, pw * 0.64, ph * 0.32, flashHurt ? "#fca5a5" : "#60a5fa");
     ctx.fillStyle = "#ffffff";
+    const eyeX = player.facing > 0 ? psx + pw * 0.62 : psx + pw * 0.2;
     ctx.beginPath();
-    ctx.arc(player.x + 22, player.y - 5 + squash, 3, 0, Math.PI * 2);
+    ctx.arc(eyeX, psy - ph * 0.1, Math.max(1.4, 2 * game.scale), 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = "#1e3a8a";
-    ctx.font = "bold 11px Inter, sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText("ST", player.x + player.width / 2, player.y + 27);
-    ctx.textAlign = "left";
 
     game.sparks.forEach((spark) => {
-      ctx.globalAlpha = Math.max(0, spark.life / 28);
-      drawRoundedRect(spark.x, spark.y, 4, 4, 2, spark.color);
+      ctx.globalAlpha = Math.max(0, spark.life / 24);
+      drawRect(worldToScreenX(spark.x), toScreenY(spark.y), 4 * game.scale, 4 * game.scale, spark.color);
       ctx.globalAlpha = 1;
     });
 
-    if (game.lives === 0) {
-      ctx.fillStyle = "rgba(15, 23, 42, 0.62)";
+    if (game.won) {
+      ctx.fillStyle = "rgba(15, 23, 42, 0.58)";
       ctx.fillRect(0, 0, width, height);
       ctx.fillStyle = "#ffffff";
-      ctx.font = "bold 18px Inter, sans-serif";
+      ctx.font = `bold ${Math.max(14, 18 * game.scale)}px Inter, sans-serif`;
       ctx.textAlign = "center";
-      ctx.fillText("Shield refreshing", width / 2, height / 2);
+      ctx.fillText("Scan route cleared", width / 2, height / 2 - 6);
+      ctx.font = `${Math.max(11, 13 * game.scale)}px Inter, sans-serif`;
+      ctx.fillText(`Score ${game.score}`, width / 2, height / 2 + 16);
       ctx.textAlign = "left";
     }
   }
@@ -496,15 +600,12 @@ function veyraStartGame(canvas) {
   };
   updateHud();
   if (game.reducedMotion) {
-    spawnThreat();
-    spawnPacket();
-    game.spawnTimer = Number.POSITIVE_INFINITY;
-    game.packetTimer = Number.POSITIVE_INFINITY;
     render();
   } else {
     game.raf = requestAnimationFrame(loop);
   }
 }
+
 
 function veyraStopGame() {
   if (veyraState.game?.cleanup) veyraState.game.cleanup();
