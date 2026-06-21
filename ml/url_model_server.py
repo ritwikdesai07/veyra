@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import pickle
+import re
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -63,20 +64,48 @@ def root_domain(host: str) -> str:
     return ".".join(parts[-2:])
 
 
-def url_depth(parsed) -> int:
-    return len([part for part in parsed.path.split("/") if part])
+# Matches the JS-side canonicalizeUrlForCheck in risk_engine.js: a path
+# segment that is purely numeric, or a long opaque token (hex/base64-ish
+# IDs, session tokens), is noise that doesn't change what site the URL
+# points to, so it's stripped before scoring.
+_NUMERIC_SEGMENT = re.compile(r"^\d+$")
+_OPAQUE_TOKEN_SEGMENT = re.compile(r"^[a-z0-9_-]{20,}$", re.IGNORECASE)
+
+
+def canonicalize_url(url: str) -> str:
+    """Cut a URL down to scheme + host (the "first part"), the same way an
+    email sender address is reduced to its domain before being checked."""
+    parsed = urlparse(url if "://" in url else f"http://{url}")
+    host = normalize_host(parsed.netloc.split("@")[-1].split(":")[0])
+    scheme = parsed.scheme or "http"
+    return f"{scheme}://{host}"
+
+
+def clean_path_for_features(pathname: str) -> str:
+    segments = [part for part in pathname.split("/") if part]
+    kept = [part for part in segments if not _NUMERIC_SEGMENT.match(part) and not _OPAQUE_TOKEN_SEGMENT.match(part)]
+    return "/" + "/".join(kept) if kept else "/"
 
 
 def extract_features(url: str) -> dict[str, float]:
-    parsed = urlparse(url if "://" in url else f"http://{url}")
+    # The model is scored on the canonical (scheme+host) form, matching the
+    # JS side, but URL_Depth is still computed from the original path with
+    # numeric IDs and opaque tokens stripped out first -- that's real path
+    # structure the model was trained on, not noise.
+    original_parsed = urlparse(url if "://" in url else f"http://{url}")
+    cleaned_path = clean_path_for_features(original_parsed.path)
+    depth = len([part for part in cleaned_path.split("/") if part])
+
+    canonical = canonicalize_url(url)
+    parsed = urlparse(canonical)
     host = normalize_host(parsed.netloc.split("@")[-1].split(":")[0])
     root = root_domain(host)
     metadata = domain_metadata.get(root, {})
 
     values = {
-        "URL_Length": 1 if len(url) >= 54 else 0,
-        "URL_Depth": url_depth(parsed),
-        "https_Domain": 1 if "https" in host else 0,
+        "URL_Length": 1 if len(canonical) >= 54 else 0,
+        "URL_Depth": depth,
+        "https_Domain": 1 if parsed.scheme == "https" else 0,
         "TinyURL": 1 if host in SHORTENERS else 0,
         "Prefix/Suffix": 1 if "-" in root else 0,
         # Unknown age/expiration are neutral in the local prototype. Provide
