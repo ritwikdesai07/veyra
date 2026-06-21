@@ -50,13 +50,13 @@ chrome.runtime.sendMessage({ type: "GET_FEEDBACK_STATS" }, (response) => {
   if (feedbackCount) feedbackCount.textContent = `${response?.count || 0} labels`;
 });
 
-chrome.storage.local.get({ shieldThreadSettings: { adSupportedMode: false } }, ({ shieldThreadSettings }) => {
+chrome.storage.local.get({ veyraSettings: { adSupportedMode: false } }, ({ veyraSettings }) => {
   const adMode = document.getElementById("ad-mode");
-  adMode.checked = Boolean(shieldThreadSettings.adSupportedMode);
+  adMode.checked = Boolean(veyraSettings.adSupportedMode);
   adMode.addEventListener("change", () => {
     chrome.storage.local.set({
-      shieldThreadSettings: {
-        ...shieldThreadSettings,
+      veyraSettings: {
+        ...veyraSettings,
         adSupportedMode: adMode.checked
       }
     });

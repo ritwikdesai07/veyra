@@ -34,8 +34,8 @@ SHORTENERS = {
 }
 
 DEFAULT_MODEL_PATH = Path.home() / "Downloads" / "XGBoostClassifier.pickle.dat"
-MODEL_PATH = Path(os.environ.get("SHIELDTHREAD_MODEL_PATH", DEFAULT_MODEL_PATH))
-DOMAIN_METADATA_PATH = os.environ.get("SHIELDTHREAD_DOMAIN_METADATA", "")
+MODEL_PATH = Path(os.environ.get("VEYRA_MODEL_PATH", DEFAULT_MODEL_PATH))
+DOMAIN_METADATA_PATH = os.environ.get("VEYRA_DOMAIN_METADATA", "")
 
 app = Flask(__name__)
 model: Any = None
@@ -80,7 +80,7 @@ def extract_features(url: str) -> dict[str, float]:
         "TinyURL": 1 if host in SHORTENERS else 0,
         "Prefix/Suffix": 1 if "-" in root else 0,
         # Unknown age/expiration are neutral in the local prototype. Provide
-        # SHIELDTHREAD_DOMAIN_METADATA for stronger production-like signals.
+        # VEYRA_DOMAIN_METADATA for stronger production-like signals.
         "Domain_Age": int(metadata.get("Domain_Age", metadata.get("domain_age", 0))),
         "Domain_End": int(metadata.get("Domain_End", metadata.get("domain_end", 0))),
     }
@@ -178,7 +178,7 @@ def load_model() -> None:
             raise RuntimeError(
                 "This pickle was created by an older XGBoost serializer. "
                 "Convert it to JSON from the original training environment with "
-                "ml\\convert_legacy_xgboost.py, then set SHIELDTHREAD_MODEL_PATH to the JSON file."
+                "ml\\convert_legacy_xgboost.py, then set VEYRA_MODEL_PATH to the JSON file."
             ) from error
         raise
 
@@ -197,7 +197,7 @@ if __name__ == "__main__":
         print("Run: python -m pip install -r ml\\requirements.txt")
         raise SystemExit(1)
     except Exception as error:
-        print(f"Cannot start ShieldThread URL model server: {error}")
+        print(f"Cannot start Veyra URL model server: {error}")
         raise SystemExit(1)
 
     app.run(host="127.0.0.1", port=8765, debug=False)

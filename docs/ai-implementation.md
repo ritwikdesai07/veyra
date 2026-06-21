@@ -1,4 +1,4 @@
-# ShieldThread AI Implementation
+# Veyra AI Implementation
 
 This build implements the seven AI/ML layers as local-first extension code with optional local model endpoints.
 
@@ -41,7 +41,7 @@ Expected optional local AI response:
 
 ```json
 {
-  "model": "local-shieldthread-ai",
+  "model": "local-veyra-ai",
   "findings": [
     {
       "id": "model-extra-signal",
@@ -66,6 +66,6 @@ Expected optional local AI response:
 ## 7. User feedback loop
 
 - Built in: website reports show Safe, Phishing, and Too strict feedback buttons.
-- Built in: `src/service_worker.js` stores feedback locally in `shieldThreadFeedback`.
+- Built in: `src/service_worker.js` stores feedback locally in `veyraFeedback`.
 - Built in: the popup shows the number of labels collected.
 - Training use: export stored labels later with finding IDs, score, surface, and user label. Do not include raw email or document text unless the user explicitly opts in.

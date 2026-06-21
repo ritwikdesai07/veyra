@@ -1,12 +1,12 @@
 importScripts("risk_engine.js");
 
-const ACTIVITY_KEY = "shieldThreadRecentActivity";
-const FEEDBACK_KEY = "shieldThreadFeedback";
+const ACTIVITY_KEY = "veyraRecentActivity";
+const FEEDBACK_KEY = "veyraFeedback";
 const LOCAL_MODEL_ENDPOINT = "http://127.0.0.1:8765/score";
 const LOCAL_AI_ENDPOINT = "http://127.0.0.1:8766/analyze";
-const SAFE_HOSTS_KEY = "shieldThreadSafeHosts";
-const SENDER_MEMORY_KEY = "shieldThreadSenderMemory";
-const SENDER_PROFILE_KEY = "shieldThreadSenderProfiles";
+const SAFE_HOSTS_KEY = "veyraSafeHosts";
+const SENDER_MEMORY_KEY = "veyraSenderMemory";
+const SENDER_PROFILE_KEY = "veyraSenderProfiles";
 const SAFE_HOST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const SENDER_MEMORY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -38,7 +38,7 @@ async function getFeedback() {
 async function saveReport(report) {
   const activity = await getActivity();
   const next = [report, ...activity.filter((item) => item.id !== report.id)].slice(0, 25);
-  await chrome.storage.local.set({ [ACTIVITY_KEY]: next, shieldThreadLatestReport: report });
+  await chrome.storage.local.set({ [ACTIVITY_KEY]: next, veyraLatestReport: report });
   await updateSafetyMemory(report);
   return report;
 }
@@ -104,7 +104,7 @@ function addServiceFinding(report, finding) {
     where: finding.where,
     detail: finding.detail,
     advice: finding.advice,
-    source: finding.source || "ShieldThread AI layer",
+    source: finding.source || "Veyra AI layer",
     id: finding.id
   });
 }
@@ -146,9 +146,9 @@ function buildKnownSenderPassReport(payload, senderMemoryEntry) {
     score: 0,
     level: "safe",
     findings: [],
-    recommendation: "Known sender has previously passed ShieldThread checks. No first-pass scan was required.",
+    recommendation: "Known sender has previously passed Veyra checks. No first-pass scan was required.",
     confirmationKeyword: "",
-    model: "ShieldThread email sender-memory framework v0.3",
+    model: "Veyra email sender-memory framework v0.3",
     framework: {
       name: "Assumed spoofed email framework",
       senderKey: senderKeyFor(payload.sender),
@@ -240,7 +240,7 @@ function recomputeReportRisk(report) {
   const highCount = report.findings.filter((finding) => finding.severity === "high").length;
   const diversityBonus = new Set(report.findings.map((finding) => finding.category)).size * 3;
   report.score = Math.min(100, raw + diversityBonus + Math.max(0, highCount - 1) * 6);
-  report.level = self.ShieldThreadRiskEngine.levelForScore(report.score);
+  report.level = self.VeyraRiskEngine.levelForScore(report.score);
   report.recommendation = recommendationFor(report.level);
   report.confirmationKeyword = report.level === "safe" ? "" : "I UNDERSTAND";
   report.findings.sort((a, b) => (b.points || 0) - (a.points || 0));
@@ -268,7 +268,7 @@ function redactedPayloadForAi(payload, report) {
     surface: payload?.surface || report.surface,
     title: String(payload?.title || report.title || "").slice(0, 160),
     host: hostFor(payload?.url || report.url || ""),
-    features: report.features || self.ShieldThreadRiskEngine.extractSurfaceFeatures(payload || {}),
+    features: report.features || self.VeyraRiskEngine.extractSurfaceFeatures(payload || {}),
     findingIds: report.findings.map((finding) => finding.id).slice(0, 20),
     findingCategories: report.findings.map((finding) => finding.category).slice(0, 20)
   };
@@ -312,8 +312,8 @@ function buildAiNarrative(report) {
       ? "This may impact the user if the request is unexpected or the domain cannot be independently verified."
       : "No strong evidence suggests immediate data compromise, but sensitive actions should still be verified.";
   const summary = top.length
-    ? `ShieldThread found ${top.length} main signal${top.length === 1 ? "" : "s"}: ${riskDrivers.join("; ")}.`
-    : "ShieldThread did not find strong phishing or spoofing evidence in the available page data.";
+    ? `Veyra found ${top.length} main signal${top.length === 1 ? "" : "s"}: ${riskDrivers.join("; ")}.`
+    : "Veyra did not find strong phishing or spoofing evidence in the available page data.";
 
   return {
     mode: "evidence-bound local report",
@@ -337,7 +337,7 @@ async function enrichReportWithAi(report, payload) {
       where: finding.where || hostFor(payload?.url || report.url),
       detail: finding.detail || "Local AI model returned an additional risk signal.",
       advice: finding.advice || "Verify this item before proceeding.",
-      source: localAi.model || "Local ShieldThread AI endpoint"
+      source: localAi.model || "Local Veyra AI endpoint"
     }));
     recomputeReportRisk(report);
   }
@@ -372,7 +372,7 @@ async function enrichReportWithSenderAnomaly(report, payload, senderMemoryEntry)
       where: key,
       detail: "This sender has no local trust history and the message contains links or attachments.",
       advice: "Verify the sender before opening links or files.",
-      source: "ShieldThread sender anomaly model"
+      source: "Veyra sender anomaly model"
     });
   }
 
@@ -383,9 +383,9 @@ async function enrichReportWithSenderAnomaly(report, payload, senderMemoryEntry)
       points: 22,
       category: "Sender relationship model",
       where: key,
-      detail: "This sender was previously associated with a risky ShieldThread scan.",
+      detail: "This sender was previously associated with a risky Veyra scan.",
       advice: "Use a separate trusted channel before responding or clicking.",
-      source: "ShieldThread sender anomaly model"
+      source: "Veyra sender anomaly model"
     });
   }
 
@@ -398,7 +398,7 @@ async function enrichReportWithSenderAnomaly(report, payload, senderMemoryEntry)
       where: domain,
       detail: "The domain is familiar, but this specific sender address is new and the message has risk signals.",
       advice: "Confirm whether this sender address is expected.",
-      source: "ShieldThread sender graph model"
+      source: "Veyra sender graph model"
     });
   }
 
@@ -417,7 +417,7 @@ async function buildSurfaceReport(payload, options = {}) {
       return buildKnownSenderPassReport(payload, senderMemoryEntry);
     }
 
-    const report = self.ShieldThreadRiskEngine.analyzeSurface(payload);
+    const report = self.VeyraRiskEngine.analyzeSurface(payload);
     await enrichReportWithLocalModel(report, payload, payload.url);
     await enrichReportWithSenderAnomaly(report, payload, senderMemoryEntry);
     report.framework = frameworkForEmail(report, payload, senderMemoryEntry);
@@ -427,7 +427,7 @@ async function buildSurfaceReport(payload, options = {}) {
     return report;
   }
 
-  const report = self.ShieldThreadRiskEngine.analyzeSurface(payload);
+  const report = self.VeyraRiskEngine.analyzeSurface(payload);
   await enrichReportWithLocalModel(report, payload, payload.url);
   return enrichReportWithAi(report, payload);
 }
@@ -444,7 +444,7 @@ async function updateSenderMemory(report, payload) {
       lastSafeAt: Date.now(),
       expiresAt: Date.now() + SENDER_MEMORY_TTL_MS,
       title: report.title || "",
-      source: "ShieldThread safe full-email scan"
+      source: "Veyra safe full-email scan"
     };
   } else if (report.level !== "safe") {
     memory[key] = {
@@ -452,7 +452,7 @@ async function updateSenderMemory(report, payload) {
       lastRiskAt: Date.now(),
       lastLevel: report.level,
       title: report.title || "",
-      source: "ShieldThread risky full-email scan"
+      source: "Veyra risky full-email scan"
     };
   }
   await chrome.storage.local.set({ [SENDER_MEMORY_KEY]: memory });
@@ -492,7 +492,7 @@ async function updateSafetyMemory(report) {
       lastSafeAt: Date.now(),
       expiresAt: Date.now() + SAFE_HOST_TTL_MS,
       title: report.title || "",
-      source: "ShieldThread safe website scan"
+      source: "Veyra safe website scan"
     };
   } else {
     delete safeHosts[host];
@@ -552,7 +552,7 @@ async function shouldGateWebsite(url) {
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.storage.local.set({
-    shieldThreadSettings: {
+    veyraSettings: {
       protectionEnabled: true,
       confirmationKeyword: "I UNDERSTAND",
       adSupportedMode: false,
@@ -637,7 +637,7 @@ chrome.downloads.onChanged.addListener(async (delta) => {
   const [download] = await chrome.downloads.search({ id: delta.id });
   if (!download) return;
 
-  const report = self.ShieldThreadRiskEngine.analyzeSurface({
+  const report = self.VeyraRiskEngine.analyzeSurface({
     surface: "download",
     title: download.filename.split(/[\\/]/).pop() || "Downloaded file",
     url: download.finalUrl || download.url || "",

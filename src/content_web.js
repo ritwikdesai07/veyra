@@ -1,11 +1,11 @@
-const shieldThreadState = {
+const veyraState = {
   report: null,
   allowed: false,
   progress: 18,
   game: null
 };
 
-function shieldThreadIsGoogleSearchPage() {
+function veyraIsGoogleSearchPage() {
   const host = location.hostname.replace(/^www\./, "").toLowerCase();
   if (host !== "google.com" && !host.endsWith(".google.com")) return false;
 
@@ -15,11 +15,11 @@ function shieldThreadIsGoogleSearchPage() {
   return ["/search", "/url"].includes(path) || (path === "/" && params.has("q"));
 }
 
-function shieldThreadShouldSkipWebsiteGate() {
-  return shieldThreadIsGoogleSearchPage();
+function veyraShouldSkipWebsiteGate() {
+  return veyraIsGoogleSearchPage();
 }
 
-function shieldThreadAskWebsiteGateDecision() {
+function veyraAskWebsiteGateDecision() {
   return new Promise((resolve) => {
     if (typeof chrome === "undefined" || !chrome.runtime?.sendMessage) {
       resolve({ shouldGate: true, reason: "runtime-unavailable" });
@@ -36,7 +36,7 @@ function shieldThreadAskWebsiteGateDecision() {
   });
 }
 
-function shieldThreadCollectPage() {
+function veyraCollectPage() {
   const currentHost = location.hostname.replace(/^www\./, "").toLowerCase();
   const links = [...document.links].map((link) => ({
     href: link.href,
@@ -85,64 +85,64 @@ function shieldThreadCollectPage() {
   };
 }
 
-function shieldThreadBuildGate() {
+function veyraBuildGate() {
   const gate = document.createElement("section");
-  gate.className = "shieldthread-gate";
+  gate.className = "veyra-gate";
   gate.innerHTML = `
-    <main class="shieldthread-gate-main">
-      <div class="shieldthread-wait-card">
-        <div class="shieldthread-arcade-top">
-          <div class="shieldthread-mark">ST</div>
+    <main class="veyra-gate-main">
+      <div class="veyra-wait-card">
+        <div class="veyra-arcade-top">
+          <div class="veyra-mark">ST</div>
           <div>
-            <span class="shieldthread-kicker">Live scan mode</span>
-            <h1>Checking this site before data leaves</h1>
+            <span class="veyra-kicker">Website protection</span>
+            <h1>Checking this site before data leaves your browser</h1>
           </div>
         </div>
-        <p>ShieldThread is inspecting the page, forms, outbound links, and downloadable files.</p>
+        <p>Veyra is reviewing page content, forms, outbound links, scripts, and downloads.</p>
 
-        <div class="shieldthread-scan-grid" aria-hidden="true">
+        <div class="veyra-scan-grid" aria-hidden="true">
           <span>URL</span>
           <span>DOM</span>
           <span>LINKS</span>
           <span>FILES</span>
         </div>
 
-        <div class="shieldthread-game" tabindex="0">
-          <div class="shieldthread-game-head">
-            <span>Packet Defender</span>
-            <div class="shieldthread-game-stats">
-              <b>DATA <span id="shieldthread-score">0</span></b>
-              <b>SHIELD <span id="shieldthread-lives">3</span></b>
+        <div class="veyra-game" tabindex="0">
+          <div class="veyra-game-head">
+            <span>Sky Check Runner</span>
+            <div class="veyra-game-stats">
+              <b>Distance <span id="veyra-score">0</span></b>
+              <b>Shield <span id="veyra-lives">3</span></b>
             </div>
           </div>
-          <div class="shieldthread-game-stage">
-            <canvas id="shieldthread-game-canvas" class="shieldthread-canvas" width="720" height="300" aria-label="Packet Defender game"></canvas>
+          <div class="veyra-game-stage">
+            <canvas id="veyra-game-canvas" class="veyra-canvas" width="720" height="300" aria-label="Sky Check Runner game"></canvas>
           </div>
-          <div class="shieldthread-game-help">
-            <span>PACKETS CLEAN</span>
-            <span>PULSE READY</span>
+          <div class="veyra-game-help">
+            <span>Clean packets collected</span>
+            <span>Jump runner active</span>
           </div>
         </div>
 
-        <div class="shieldthread-ad-slot shieldthread-ad-slot-main" aria-label="Advertisement placeholder">
+        <div class="veyra-ad-slot veyra-ad-slot-main" aria-label="Advertisement placeholder">
           <span>Ad</span>
           <strong>Privacy-safe sponsor board</strong>
           <p>Broad security sponsorship only. No ad targeting from page contents.</p>
         </div>
 
-        <div class="shieldthread-progress">
-          <div class="shieldthread-progress-labels">
-            <span>Threat model compiling</span>
-            <b id="shieldthread-progress-label">18%</b>
+        <div class="veyra-progress">
+          <div class="veyra-progress-labels">
+            <span>Analysis in progress</span>
+            <b id="veyra-progress-label">18%</b>
           </div>
-          <div class="shieldthread-progress-track"><div class="shieldthread-progress-fill" id="shieldthread-progress-fill"></div></div>
+          <div class="veyra-progress-track"><div class="veyra-progress-fill" id="veyra-progress-fill"></div></div>
         </div>
       </div>
     </main>
-    <aside class="shieldthread-rail">
-      <div class="shieldthread-report-title"><h2>ShieldThread Risk Report</h2></div>
-      <div class="shieldthread-finding"><strong>Scan in progress</strong><p>Awaiting first-pass risk report.</p></div>
-      <div class="shieldthread-ad-slot shieldthread-ad-slot-rail" aria-label="Advertisement placeholder">
+    <aside class="veyra-rail">
+      <div class="veyra-report-title"><h2>Veyra Risk Report</h2></div>
+      <div class="veyra-finding"><strong>Scan in progress</strong><p>Awaiting first-pass risk report.</p></div>
+      <div class="veyra-ad-slot veyra-ad-slot-rail" aria-label="Advertisement placeholder">
         <span>Ad</span>
         <strong>Security sponsor slot</strong>
         <p>Disabled on dangerous reports.</p>
@@ -151,12 +151,12 @@ function shieldThreadBuildGate() {
   `;
 
   document.documentElement.appendChild(gate);
-  shieldThreadStartGame(gate.querySelector("#shieldthread-game-canvas"));
-  gate.querySelector(".shieldthread-game")?.focus({ preventScroll: true });
+  veyraStartGame(gate.querySelector("#veyra-game-canvas"));
+  gate.querySelector(".veyra-game")?.focus({ preventScroll: true });
   return gate;
 }
 
-function shieldThreadStartGame(canvas) {
+function veyraStartGame(canvas) {
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
   const game = {
@@ -165,9 +165,10 @@ function shieldThreadStartGame(canvas) {
     dpr: Math.max(1, Math.min(2, window.devicePixelRatio || 1)),
     width: 720,
     height: 300,
-    player: { x: 96, y: 150, r: 16, vx: 0, vy: 0, pulse: 0 },
+    player: { x: 96, y: 0, width: 34, height: 42, vy: 0, grounded: true, squash: 0 },
     packets: [],
     threats: [],
+    clouds: [],
     sparks: [],
     keys: new Set(),
     score: 0,
@@ -177,27 +178,32 @@ function shieldThreadStartGame(canvas) {
     raf: 0,
     spawnTimer: 0,
     packetTimer: 0,
-    pulseCooldown: 0
+    cloudTimer: 0,
+    groundY: 244,
+    speed: 3.1
   };
   game.reducedMotion = Boolean(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
-  shieldThreadState.game = game;
+  veyraState.game = game;
 
   function resize() {
     const rect = canvas.getBoundingClientRect();
     game.width = rect.width || 720;
     game.height = rect.height || 300;
+    game.groundY = Math.max(180, game.height - 58);
+    if (game.player.grounded) game.player.y = game.groundY - game.player.height;
     canvas.width = Math.floor(game.width * game.dpr);
     canvas.height = Math.floor(game.height * game.dpr);
     ctx.setTransform(game.dpr, 0, 0, game.dpr, 0, 0);
-    ctx.imageSmoothingEnabled = false;
+    ctx.imageSmoothingEnabled = true;
   }
 
   function spawnThreat() {
     game.threats.push({
-      x: game.width + 24,
-      y: 42 + Math.random() * (game.height - 92),
-      r: 14 + Math.random() * 6,
-      vx: 1.5 + Math.random() * 1.3,
+      x: game.width + 28,
+      y: game.groundY - 34,
+      width: 24 + Math.random() * 16,
+      height: 30 + Math.random() * 16,
+      vx: game.speed + Math.random() * 0.8,
       label: Math.random() > 0.5 ? "phish" : "spoof"
     });
   }
@@ -205,29 +211,42 @@ function shieldThreadStartGame(canvas) {
   function spawnPacket() {
     game.packets.push({
       x: game.width + 20,
-      y: 40 + Math.random() * (game.height - 80),
-      r: 9,
-      vx: 1.2 + Math.random() * 0.8
+      y: game.groundY - 92 - Math.random() * 58,
+      r: 10,
+      vx: game.speed
     });
   }
 
-  function drawPixelRect(x, y, width, height, color, outline) {
-    const px = Math.round(x);
-    const py = Math.round(y);
-    const pw = Math.round(width);
-    const ph = Math.round(height);
-    if (outline) {
-      ctx.fillStyle = outline;
-      ctx.fillRect(px - 2, py - 2, pw + 4, ph + 4);
-    }
-    ctx.fillStyle = color;
-    ctx.fillRect(px, py, pw, ph);
+  function spawnCloud() {
+    game.clouds.push({
+      x: game.width + 70,
+      y: 32 + Math.random() * 72,
+      scale: 0.8 + Math.random() * 0.8,
+      vx: 0.45 + Math.random() * 0.35
+    });
   }
 
-  function circleHit(a, b) {
-    const dx = a.x - b.x;
-    const dy = a.y - b.y;
-    return Math.sqrt(dx * dx + dy * dy) < a.r + b.r;
+  function drawRoundedRect(x, y, width, height, radius, color) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.roundRect(x, y, width, height, radius);
+    ctx.fill();
+  }
+
+  function rectHit(a, b) {
+    return a.x < b.x + b.width
+      && a.x + a.width > b.x
+      && a.y < b.y + b.height
+      && a.y + a.height > b.y;
+  }
+
+  function jump() {
+    const player = game.player;
+    if (!player.grounded) return;
+    player.vy = -12.8;
+    player.grounded = false;
+    player.squash = 8;
+    addSpark(player.x + player.width / 2, game.groundY, "#38bdf8");
   }
 
   function addSpark(x, y, color) {
@@ -244,59 +263,61 @@ function shieldThreadStartGame(canvas) {
   }
 
   function updateHud() {
-    const score = document.getElementById("shieldthread-score");
-    const lives = document.getElementById("shieldthread-lives");
+    const score = document.getElementById("veyra-score");
+    const lives = document.getElementById("veyra-lives");
     if (score) score.textContent = String(game.score);
     if (lives) lives.textContent = String(game.lives);
   }
 
   function update(delta) {
-    const speed = 0.36 * delta;
+    const scale = delta / 16;
     const player = game.player;
-    player.vx = 0;
-    player.vy = 0;
-    if (game.keys.has("arrowleft") || game.keys.has("a")) player.vx -= speed;
-    if (game.keys.has("arrowright") || game.keys.has("d")) player.vx += speed;
-    if (game.keys.has("arrowup") || game.keys.has("w")) player.vy -= speed;
-    if (game.keys.has("arrowdown") || game.keys.has("s")) player.vy += speed;
-    player.x = Math.max(24, Math.min(game.width - 24, player.x + player.vx));
-    player.y = Math.max(32, Math.min(game.height - 32, player.y + player.vy));
+    if (game.keys.has("arrowup") || game.keys.has("w") || game.keys.has("space")) jump();
+
+    player.vy += 0.72 * scale;
+    player.y += player.vy * scale;
+    player.squash = Math.max(0, player.squash - delta * 0.08);
+    if (player.y >= game.groundY - player.height) {
+      player.y = game.groundY - player.height;
+      player.vy = 0;
+      player.grounded = true;
+    }
 
     game.spawnTimer -= delta;
     game.packetTimer -= delta;
-    game.pulseCooldown = Math.max(0, game.pulseCooldown - delta);
-    player.pulse = Math.max(0, player.pulse - delta);
+    game.cloudTimer -= delta;
+    game.speed = Math.min(5.8, game.speed + delta * 0.0009);
     if (game.spawnTimer <= 0) {
       spawnThreat();
-      game.spawnTimer = 720 + Math.random() * 560;
+      game.spawnTimer = 880 + Math.random() * 680;
     }
     if (game.packetTimer <= 0) {
       spawnPacket();
-      game.packetTimer = 580 + Math.random() * 620;
+      game.packetTimer = 720 + Math.random() * 720;
+    }
+    if (game.cloudTimer <= 0) {
+      spawnCloud();
+      game.cloudTimer = 1200 + Math.random() * 1200;
     }
 
     game.threats.forEach((threat) => {
-      threat.x -= threat.vx * (delta / 16);
-      threat.y += Math.sin((game.frame + threat.x) / 28) * 0.45;
-      if (player.pulse > 0) {
-        const dx = threat.x - player.x;
-        const dy = threat.y - player.y;
-        const distance = Math.max(1, Math.sqrt(dx * dx + dy * dy));
-        if (distance < 92) {
-          threat.x += (dx / distance) * 3.2;
-          threat.y += (dy / distance) * 3.2;
-        }
-      }
+      threat.x -= threat.vx * scale;
     });
 
     game.packets.forEach((packet) => {
-      packet.x -= packet.vx * (delta / 16);
+      packet.x -= packet.vx * scale;
+      packet.y += Math.sin((game.frame + packet.x) / 18) * 0.35;
     });
 
+    game.clouds.forEach((cloud) => {
+      cloud.x -= cloud.vx * scale;
+    });
+
+    const playerBox = { x: player.x + 5, y: player.y + 4, width: player.width - 10, height: player.height - 6 };
     game.threats = game.threats.filter((threat) => {
-      if (circleHit(player, threat)) {
+      if (rectHit(playerBox, threat)) {
         game.lives = Math.max(0, game.lives - 1);
-        addSpark(threat.x, threat.y, "#dc2626");
+        addSpark(threat.x + threat.width / 2, threat.y + threat.height / 2, "#ef4444");
         updateHud();
         return false;
       }
@@ -304,14 +325,16 @@ function shieldThreadStartGame(canvas) {
     });
 
     game.packets = game.packets.filter((packet) => {
-      if (circleHit(player, packet)) {
+      const packetBox = { x: packet.x - packet.r, y: packet.y - packet.r, width: packet.r * 2, height: packet.r * 2 };
+      if (rectHit(playerBox, packetBox)) {
         game.score += 25;
-        addSpark(packet.x, packet.y, "#15803d");
+        addSpark(packet.x, packet.y, "#0ea5e9");
         updateHud();
         return false;
       }
       return packet.x > -30;
     });
+    game.clouds = game.clouds.filter((cloud) => cloud.x > -130);
 
     game.sparks.forEach((spark) => {
       spark.x += spark.vx;
@@ -324,91 +347,92 @@ function shieldThreadStartGame(canvas) {
       game.score = Math.max(0, game.score - 1);
       if (game.frame % 90 === 0) game.lives = 3;
       updateHud();
+    } else if (game.frame % 8 === 0) {
+      game.score += 1;
+      updateHud();
     }
   }
 
   function render() {
     const { width, height } = game;
     ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = "#071014";
+    const sky = ctx.createLinearGradient(0, 0, 0, height);
+    sky.addColorStop(0, "#e0f2fe");
+    sky.addColorStop(0.62, "#f8fbff");
+    sky.addColorStop(1, "#ffffff");
+    ctx.fillStyle = sky;
     ctx.fillRect(0, 0, width, height);
 
-    ctx.strokeStyle = "rgba(14, 165, 233, 0.16)";
-    ctx.lineWidth = 1;
-    for (let x = (game.frame % 48) - 48; x < width; x += 24) {
+    game.clouds.forEach((cloud) => {
+      ctx.fillStyle = "rgba(255, 255, 255, 0.92)";
       ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, height);
-      ctx.stroke();
-    }
-    for (let y = 0; y < height; y += 24) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(width, y);
-      ctx.stroke();
-    }
+      ctx.ellipse(cloud.x, cloud.y, 38 * cloud.scale, 14 * cloud.scale, 0, 0, Math.PI * 2);
+      ctx.ellipse(cloud.x + 26 * cloud.scale, cloud.y + 2, 30 * cloud.scale, 12 * cloud.scale, 0, 0, Math.PI * 2);
+      ctx.ellipse(cloud.x - 22 * cloud.scale, cloud.y + 4, 24 * cloud.scale, 10 * cloud.scale, 0, 0, Math.PI * 2);
+      ctx.fill();
+    });
 
-    ctx.fillStyle = "rgba(255, 255, 255, 0.42)";
-    for (let i = 0; i < 28; i += 1) {
-      const sx = (i * 97 + game.frame * 0.45) % width;
-      const sy = (i * 43) % height;
-      ctx.fillRect(Math.floor(sx), Math.floor(sy), 2, 2);
-    }
-
-    drawPixelRect(18, 28, 146, height - 56, "rgba(34, 197, 94, 0.12)", "#22c55e");
-    ctx.fillStyle = "#86efac";
-    ctx.font = "bold 12px Consolas, monospace";
-    ctx.fillText("SAFE ZONE", 38, 56);
-    for (let y = 78; y < height - 34; y += 28) {
-      drawPixelRect(44, y, 92, 8, "rgba(34, 197, 94, 0.36)");
+    drawRoundedRect(0, game.groundY, width, height - game.groundY, 0, "#dbeafe");
+    ctx.strokeStyle = "#93c5fd";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, game.groundY + 1);
+    ctx.lineTo(width, game.groundY + 1);
+    ctx.stroke();
+    for (let x = -((game.frame * game.speed) % 44); x < width; x += 44) {
+      drawRoundedRect(x, game.groundY + 20, 24, 4, 2, "#bfdbfe");
     }
 
     game.packets.forEach((packet) => {
-      drawPixelRect(packet.x - 10, packet.y - 8, 20, 16, "#22c55e", "#bbf7d0");
-      drawPixelRect(packet.x - 5, packet.y - 2, 10, 4, "#052e16");
+      ctx.fillStyle = "#0ea5e9";
+      ctx.beginPath();
+      ctx.arc(packet.x, packet.y, packet.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.arc(packet.x - 3, packet.y - 3, 3, 0, Math.PI * 2);
+      ctx.fill();
     });
 
     game.threats.forEach((threat) => {
-      const size = threat.r * 2;
-      drawPixelRect(threat.x - threat.r, threat.y - threat.r, size, size, "#ef4444", "#fecaca");
-      drawPixelRect(threat.x - threat.r + 5, threat.y - 2, size - 10, 4, "#7f1d1d");
-      ctx.fillStyle = "#fff7ed";
-      ctx.font = "bold 10px Consolas, monospace";
+      drawRoundedRect(threat.x, threat.y, threat.width, threat.height, 8, "#fecaca");
+      drawRoundedRect(threat.x + 5, threat.y + 5, threat.width - 10, threat.height - 10, 6, "#ef4444");
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 14px Inter, sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText("!", threat.x, threat.y + 4);
+      ctx.fillText("!", threat.x + threat.width / 2, threat.y + threat.height / 2 + 5);
     });
     ctx.textAlign = "left";
 
     const player = game.player;
-    if (player.pulse > 0) {
-      const pulseSize = 136 - player.pulse * 0.1;
-      ctx.strokeStyle = "rgba(34, 197, 94, 0.34)";
-      ctx.lineWidth = 3;
-      ctx.strokeRect(player.x - pulseSize / 2, player.y - pulseSize / 2, pulseSize, pulseSize);
-    }
-    drawPixelRect(player.x - 18, player.y - 18, 36, 36, "#22c55e", "#ecfccb");
-    drawPixelRect(player.x - 10, player.y - 28, 20, 10, "#0ea5e9", "#bae6fd");
-    drawPixelRect(player.x - 10, player.y + 18, 20, 10, "#0ea5e9", "#bae6fd");
-    drawPixelRect(player.x - 7, player.y - 7, 14, 14, "#052e16");
-    ctx.fillStyle = "#bbf7d0";
-    ctx.font = "bold 10px Consolas, monospace";
+    const squash = player.squash;
+    drawRoundedRect(player.x, player.y + squash, player.width, player.height - squash, 10, "#2563eb");
+    drawRoundedRect(player.x + 6, player.y - 14 + squash, player.width - 12, 18, 9, "#60a5fa");
+    drawRoundedRect(player.x + 4, player.y + player.height - 4, 12, 8, 4, "#1d4ed8");
+    drawRoundedRect(player.x + player.width - 16, player.y + player.height - 4, 12, 8, 4, "#1d4ed8");
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.arc(player.x + 22, player.y - 5 + squash, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#1e3a8a";
+    ctx.font = "bold 11px Inter, sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("ST", player.x, player.y + 4);
+    ctx.fillText("ST", player.x + player.width / 2, player.y + 27);
     ctx.textAlign = "left";
 
     game.sparks.forEach((spark) => {
       ctx.globalAlpha = Math.max(0, spark.life / 28);
-      drawPixelRect(spark.x, spark.y, 4, 4, spark.color);
+      drawRoundedRect(spark.x, spark.y, 4, 4, 2, spark.color);
       ctx.globalAlpha = 1;
     });
 
     if (game.lives === 0) {
-      ctx.fillStyle = "rgba(3, 7, 18, 0.82)";
+      ctx.fillStyle = "rgba(15, 23, 42, 0.62)";
       ctx.fillRect(0, 0, width, height);
-      ctx.fillStyle = "#facc15";
-      ctx.font = "bold 18px Consolas, monospace";
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 18px Inter, sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText("SHIELD REBOOTING", width / 2, height / 2);
+      ctx.fillText("Shield refreshing", width / 2, height / 2);
       ctx.textAlign = "left";
     }
   }
@@ -441,13 +465,8 @@ function shieldThreadStartGame(canvas) {
     if (["arrowleft", "arrowright", "arrowup", "arrowdown", "a", "d", "w", "s", "space"].includes(key)) {
       event.preventDefault();
       event.stopPropagation();
-      if (key === "space" && game.pulseCooldown === 0) {
-        game.player.pulse = 420;
-        game.pulseCooldown = 900;
-        addSpark(game.player.x, game.player.y, "#15803d");
-      } else if (key !== "space") {
-        game.keys.add(key);
-      }
+      game.keys.add(key);
+      if (key === "space" || key === "arrowup" || key === "w") jump();
       if (game.reducedMotion) {
         update(16);
         render();
@@ -487,40 +506,40 @@ function shieldThreadStartGame(canvas) {
   }
 }
 
-function shieldThreadStopGame() {
-  if (shieldThreadState.game?.cleanup) shieldThreadState.game.cleanup();
-  shieldThreadState.game = null;
+function veyraStopGame() {
+  if (veyraState.game?.cleanup) veyraState.game.cleanup();
+  veyraState.game = null;
 }
 
-function shieldThreadUpdateProgress(value) {
-  shieldThreadState.progress = value;
-  const label = document.getElementById("shieldthread-progress-label");
-  const fill = document.getElementById("shieldthread-progress-fill");
+function veyraUpdateProgress(value) {
+  veyraState.progress = value;
+  const label = document.getElementById("veyra-progress-label");
+  const fill = document.getElementById("veyra-progress-fill");
   if (label) label.textContent = `${value}%`;
   if (fill) fill.style.width = `${value}%`;
 }
 
-function shieldThreadRenderGateReport(gate, report) {
-  const rail = gate.querySelector(".shieldthread-rail");
-  rail.replaceWith(shieldThreadCreateReport(report));
+function veyraRenderGateReport(gate, report) {
+  const rail = gate.querySelector(".veyra-rail");
+  rail.replaceWith(veyraCreateReport(report));
 
-  const activeRail = gate.querySelector(".shieldthread-rail");
+  const activeRail = gate.querySelector(".veyra-rail");
   const actions = document.createElement("div");
-  actions.className = "shieldthread-actions";
+  actions.className = "veyra-actions";
   if (report.level === "safe") {
-    actions.innerHTML = `<button class="shieldthread-button" type="button">Continue</button>`;
+    actions.innerHTML = `<button class="veyra-button" type="button">Continue</button>`;
   } else {
     actions.innerHTML = `
-      <input class="shieldthread-input" aria-label="Confirmation keyword" placeholder="Type ${report.confirmationKeyword}">
-      <button class="shieldthread-button" type="button">Continue Anyway</button>
-      <button class="shieldthread-button secondary" type="button">Go Back</button>
+      <input class="veyra-input" aria-label="Confirmation keyword" placeholder="Type ${report.confirmationKeyword}">
+      <button class="veyra-button" type="button">Continue Anyway</button>
+      <button class="veyra-button secondary" type="button">Go Back</button>
     `;
   }
 
   activeRail.appendChild(actions);
   if (report.level !== "dangerous") {
     const ad = document.createElement("div");
-    ad.className = "shieldthread-ad-slot shieldthread-ad-slot-rail";
+    ad.className = "veyra-ad-slot veyra-ad-slot-rail";
     ad.innerHTML = `<span>Ad</span><strong>Privacy-safe sponsor slot</strong><p>Shown only when the report is not high risk.</p>`;
     activeRail.appendChild(ad);
   }
@@ -533,31 +552,31 @@ function shieldThreadRenderGateReport(gate, report) {
       input.style.borderColor = "#dc2626";
       return;
     }
-    shieldThreadStopGame();
+    veyraStopGame();
     gate.remove();
-    shieldThreadState.allowed = true;
+    veyraState.allowed = true;
   });
 
   if (secondary) {
     secondary.addEventListener("click", () => {
-      shieldThreadStopGame();
+      veyraStopGame();
       history.length > 1 ? history.back() : location.assign("about:blank");
     });
   }
 }
 
-function shieldThreadRunWebsiteGate() {
-  const gate = shieldThreadBuildGate();
+function veyraRunWebsiteGate() {
+  const gate = veyraBuildGate();
   const timer = setInterval(() => {
-    if (shieldThreadState.progress < 86) shieldThreadUpdateProgress(shieldThreadState.progress + 9);
+    if (veyraState.progress < 86) veyraUpdateProgress(veyraState.progress + 9);
   }, 280);
 
   const runScan = () => {
-    chrome.runtime.sendMessage({ type: "SCAN_SURFACE", payload: shieldThreadCollectPage() }, (report) => {
+    chrome.runtime.sendMessage({ type: "SCAN_SURFACE", payload: veyraCollectPage() }, (report) => {
       clearInterval(timer);
-      shieldThreadUpdateProgress(100);
-      shieldThreadState.report = report;
-      setTimeout(() => shieldThreadRenderGateReport(gate, report), 360);
+      veyraUpdateProgress(100);
+      veyraState.report = report;
+      setTimeout(() => veyraRenderGateReport(gate, report), 360);
     });
   };
 
@@ -568,13 +587,13 @@ function shieldThreadRunWebsiteGate() {
   }
 }
 
-function shieldThreadStart() {
-  if (window.top !== window || location.protocol === "chrome-extension:" || shieldThreadShouldSkipWebsiteGate()) return;
+function veyraStart() {
+  if (window.top !== window || location.protocol === "chrome-extension:" || veyraShouldSkipWebsiteGate()) return;
 
-  shieldThreadAskWebsiteGateDecision().then((decision) => {
-    if (!decision?.shouldGate || shieldThreadShouldSkipWebsiteGate()) return;
-    shieldThreadRunWebsiteGate();
+  veyraAskWebsiteGateDecision().then((decision) => {
+    if (!decision?.shouldGate || veyraShouldSkipWebsiteGate()) return;
+    veyraRunWebsiteGate();
   });
 }
 
-shieldThreadStart();
+veyraStart();

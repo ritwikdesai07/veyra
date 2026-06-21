@@ -1,4 +1,4 @@
-# ShieldThread Model Roadmap
+# Veyra Model Roadmap
 
 This project should use multiple small models plus deterministic security checks. One giant "phishing AI" is harder to explain, harder to evaluate, and easier to fool.
 

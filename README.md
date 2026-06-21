@@ -1,6 +1,6 @@
-# ShieldThread
+# Veyra
 
-ShieldThread is a hackathon-stage Chrome extension prototype for explainable phishing and spoofing protection across email, documents/downloads, and websites.
+Veyra is a hackathon-stage Chrome extension prototype for explainable phishing and spoofing protection across email, documents/downloads, and websites.
 
 ## What is built
 
@@ -22,20 +22,20 @@ ShieldThread is a hackathon-stage Chrome extension prototype for explainable phi
 
 ## Optional local ML model
 
-ShieldThread can call a local XGBoost URL classifier when the model server is running.
+Veyra can call a local XGBoost URL classifier when the model server is running.
 
 ```powershell
 python -m pip install -r ml\requirements.txt
 python ml\url_model_server.py
 ```
 
-The server loads `C:\Users\ritwi_m2ofaxd\Downloads\XGBoostClassifier.pickle.dat` by default. If it is running, website URLs and links found in emails/documents can receive an extra `ML URL model` finding. If it is not running, ShieldThread silently falls back to the explainable JavaScript rules.
+The server loads `C:\Users\ritwi_m2ofaxd\Downloads\XGBoostClassifier.pickle.dat` by default. If it is running, website URLs and links found in emails/documents can receive an extra `ML URL model` finding. If it is not running, Veyra silently falls back to the explainable JavaScript rules.
 
 If the pickle fails with an older-XGBoost serialization error, convert it from the original training environment:
 
 ```powershell
 python ml\convert_legacy_xgboost.py C:\Users\ritwi_m2ofaxd\Downloads\XGBoostClassifier.pickle.dat --out ml\xgboost_url_model.json
-$env:SHIELDTHREAD_MODEL_PATH="C:\Users\ritwi_m2ofaxd\OneDrive\Documents\Coding\Njx Hackathon\ml\xgboost_url_model.json"
+$env:VEYRA_MODEL_PATH="C:\Users\ritwi_m2ofaxd\OneDrive\Documents\Coding\Njx Hackathon\ml\xgboost_url_model.json"
 python ml\url_model_server.py
 ```
 
@@ -67,7 +67,7 @@ Products already exist in this neighborhood:
 
 ## Differentiation
 
-ShieldThread should not compete as only another phishing detector. The stronger story is:
+Veyra should not compete as only another phishing detector. The stronger story is:
 
 - Explainable short reports: show what was found, where, why it matters, and what to do.
 - Cross-surface continuity: email, file/document, download, and website risk report in one extension UX.

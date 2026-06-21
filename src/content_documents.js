@@ -1,4 +1,4 @@
-function shieldThreadDocumentEscape(value) {
+function veyraDocumentEscape(value) {
   return String(value || "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -7,7 +7,7 @@ function shieldThreadDocumentEscape(value) {
     .replace(/'/g, "&#039;");
 }
 
-function shieldThreadCollectDocument() {
+function veyraCollectDocument() {
   const currentHost = location.hostname.replace(/^www\./, "").toLowerCase();
   const links = [...document.links].map((link) => ({
     href: link.href,
@@ -44,23 +44,23 @@ function shieldThreadCollectDocument() {
   };
 }
 
-function shieldThreadRenderDocumentRail(report) {
-  document.querySelector(".shieldthread-doc-rail")?.remove();
+function veyraRenderDocumentRail(report) {
+  document.querySelector(".veyra-doc-rail")?.remove();
   const color = report.level === "dangerous" ? "#dc2626" : report.level === "moderate" ? "#d97706" : "#15803d";
   const rail = document.createElement("aside");
-  rail.className = "shieldthread-doc-rail";
+  rail.className = "veyra-doc-rail";
   rail.innerHTML = `
-    <strong>ShieldThread Document Scan</strong>
-    <div class="shieldthread-meter"><div style="width:${report.score}%;background:${color}"></div></div>
+    <strong>Veyra Document Scan</strong>
+    <div class="veyra-meter"><div style="width:${report.score}%;background:${color}"></div></div>
     <p style="margin:8px 0;color:${color};font-weight:800">${report.level.toUpperCase()} - ${report.score}/100</p>
-    <p style="margin:0;color:#4b5563;font-size:13px">${shieldThreadDocumentEscape(report.recommendation)}</p>
-    ${report.ai?.summary ? `<p style="margin:8px 0 0;color:#4b5563;font-size:12px">${shieldThreadDocumentEscape(report.ai.summary)}</p>` : ""}
+    <p style="margin:0;color:#4b5563;font-size:13px">${veyraDocumentEscape(report.recommendation)}</p>
+    ${report.ai?.summary ? `<p style="margin:8px 0 0;color:#4b5563;font-size:12px">${veyraDocumentEscape(report.ai.summary)}</p>` : ""}
   `;
   document.body.appendChild(rail);
 }
 
-function shieldThreadScanDocument() {
-  chrome.runtime.sendMessage({ type: "SCAN_SURFACE", payload: shieldThreadCollectDocument() }, shieldThreadRenderDocumentRail);
+function veyraScanDocument() {
+  chrome.runtime.sendMessage({ type: "SCAN_SURFACE", payload: veyraCollectDocument() }, veyraRenderDocumentRail);
 }
 
-window.setTimeout(shieldThreadScanDocument, 1400);
+window.setTimeout(veyraScanDocument, 1400);

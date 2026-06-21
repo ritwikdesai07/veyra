@@ -1,6 +1,6 @@
-# ShieldThread Local URL Model
+# Veyra Local URL Model
 
-This folder wires the downloaded `XGBoostClassifier.pickle.dat` into ShieldThread as an optional local URL classifier.
+This folder wires the downloaded `XGBoostClassifier.pickle.dat` into Veyra as an optional local URL classifier.
 
 The Chrome extension cannot run a Python pickle directly. Instead, this local Flask server loads the model and exposes:
 
@@ -25,7 +25,7 @@ C:\Users\ritwi_m2ofaxd\Downloads\XGBoostClassifier.pickle.dat
 To override the path:
 
 ```powershell
-$env:SHIELDTHREAD_MODEL_PATH="C:\path\to\XGBoostClassifier.pickle.dat"
+$env:VEYRA_MODEL_PATH="C:\path\to\XGBoostClassifier.pickle.dat"
 python ml\url_model_server.py
 ```
 
@@ -41,10 +41,10 @@ The durable fix is to open the pickle in the original training environment, or a
 python ml\convert_legacy_xgboost.py C:\Users\ritwi_m2ofaxd\Downloads\XGBoostClassifier.pickle.dat --out ml\xgboost_url_model.json
 ```
 
-Then point ShieldThread to the converted model:
+Then point Veyra to the converted model:
 
 ```powershell
-$env:SHIELDTHREAD_MODEL_PATH="C:\Users\ritwi_m2ofaxd\OneDrive\Documents\Coding\Njx Hackathon\ml\xgboost_url_model.json"
+$env:VEYRA_MODEL_PATH="C:\Users\ritwi_m2ofaxd\OneDrive\Documents\Coding\Njx Hackathon\ml\xgboost_url_model.json"
 python ml\url_model_server.py
 ```
 
@@ -60,7 +60,7 @@ The model file advertises these features:
 - `Domain_Age`
 - `Domain_End`
 
-The server currently extracts URL structure locally. Domain age and expiration are treated as neutral unknown values unless you provide metadata through `SHIELDTHREAD_DOMAIN_METADATA`.
+The server currently extracts URL structure locally. Domain age and expiration are treated as neutral unknown values unless you provide metadata through `VEYRA_DOMAIN_METADATA`.
 
 Example metadata JSON:
 
@@ -75,4 +75,4 @@ Example metadata JSON:
 
 ## Extension Behavior
 
-If the server is running, ShieldThread adds an `ML URL model` finding when the XGBoost model predicts a suspicious URL. If the server is not running, the extension silently falls back to its explainable JavaScript rules.
+If the server is running, Veyra adds an `ML URL model` finding when the XGBoost model predicts a suspicious URL. If the server is not running, the extension silently falls back to its explainable JavaScript rules.

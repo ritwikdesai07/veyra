@@ -1,5 +1,5 @@
 (function attachRiskEngine(root) {
-  const FALLBACK_BASE = "https://shieldthread.local/";
+  const FALLBACK_BASE = "https://veyra.local/";
   const CURRENT_BASE = root.location && root.location.href ? root.location.href : FALLBACK_BASE;
 
   const RISKY_TLDS = new Set(["zip", "mov", "cam", "click", "country", "gq", "ml", "tk", "top", "xyz", "work", "rest", "quest"]);
@@ -236,7 +236,7 @@
       where: finding.where,
       detail: finding.detail,
       advice: finding.advice,
-      source: finding.source || "ShieldThread heuristic"
+      source: finding.source || "Veyra heuristic"
     };
 
     const key = `${normalized.id}|${normalized.where}|${normalized.detail}`;
@@ -600,7 +600,7 @@
           where: rule.label,
           detail: `Local text-intent classifier matched a ${rule.label} pattern.`,
           advice: "Treat the message intent as suspicious unless verified outside this flow.",
-          source: "ShieldThread local NLP-style intent model"
+          source: "Veyra local NLP-style intent model"
         });
       }
     });
@@ -770,7 +770,7 @@
           where: actionHost || pageHost || "Form fields",
           detail: "The page contains payment-like fields outside an obvious checkout context.",
           advice: "Avoid entering payment data unless you intentionally started a trusted checkout.",
-          source: "ShieldThread DOM/form feature model"
+          source: "Veyra DOM/form feature model"
         });
       }
 
@@ -783,7 +783,7 @@
           where: actionHost || pageHost || "Form fields",
           detail: "The form asks for secret-like values without using a normal password field.",
           advice: "Do not enter recovery phrases, OTPs, or private keys into unexpected forms.",
-          source: "ShieldThread DOM/form feature model"
+          source: "Veyra DOM/form feature model"
         });
       }
     });
@@ -818,7 +818,7 @@
         where: pageHost || "Current page",
         detail: "A login-like page loads or links to many external domains.",
         advice: "Verify the domain before entering credentials.",
-        source: "ShieldThread DOM/link graph model"
+        source: "Veyra DOM/link graph model"
       });
     }
   }
@@ -835,7 +835,7 @@
         where: input.title || "Document",
         detail: "The document contains many links plus credential or urgency language.",
         advice: "Do not follow links from the document until the sender and destination are verified.",
-        source: "ShieldThread document feature model"
+        source: "Veyra document feature model"
       });
     }
 
@@ -848,7 +848,7 @@
         where: input.title || "Document",
         detail: "The file pattern combines archive content with instructions to open or enable content.",
         advice: "Use a sandbox or trusted viewer before opening extracted files.",
-        source: "ShieldThread attachment feature model"
+        source: "Veyra attachment feature model"
       });
     }
   }
@@ -896,12 +896,12 @@
       findings: findings.sort((a, b) => (b.points || 0) - (a.points || 0)),
       recommendation: recommendationFor(level),
       confirmationKeyword: level === "safe" ? "" : "I UNDERSTAND",
-      model: "ShieldThread weighted heuristic model v0.2",
+      model: "Veyra weighted heuristic model v0.2",
       scannedAt: new Date().toISOString()
     };
   }
 
-  root.ShieldThreadRiskEngine = {
+  root.VeyraRiskEngine = {
     analyzeSurface,
     normalizeText,
     levelForScore,
