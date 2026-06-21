@@ -58,6 +58,14 @@ python ml\spoof_cli.py "https://rnicrosoft.com/login"
 python ml\spoof_cli.py "google.com"
 ```
 
+Run the visual spoofing detector server so the extension can use it during Gmail scans:
+
+```powershell
+python ml\spoof_model_server.py
+```
+
+That starts `http://127.0.0.1:8767/score`. Gmail scans send the visible sender address and email links to this local server. The returned ML score and character flags are added to the same report object used by the Gmail bar and details panel.
+
 The spoof detector returns a binary label, probability score, and exact flagged characters/substrings with positions.
 
 Run the optional URL XGBoost model:

@@ -18,6 +18,7 @@
     "tabs"
   ],
   "host_permissions": [
+    "https://api.openai.com/*",
     "http://*/*",
     "https://*/*",
     "file:///*"

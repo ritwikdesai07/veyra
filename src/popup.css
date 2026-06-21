@@ -164,3 +164,19 @@ h2 {
   font-size: 13px;
   font-weight: 700;
 }
+
+.settings label.stacked {
+  display: grid;
+  gap: 6px;
+  align-items: stretch;
+  margin-bottom: 10px;
+}
+
+.settings input[type="password"],
+.settings input[type="text"] {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 9px 10px;
+  font: 500 12px/1.2 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}

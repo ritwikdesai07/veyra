@@ -19,6 +19,24 @@ function veyraRiskLabel(level) {
   return "Low";
 }
 
+let veyraRuntimeInvalidated = false;
+
+function veyraCanUseRuntime() {
+  if (veyraRuntimeInvalidated || typeof chrome === "undefined") return false;
+  try {
+    return Boolean(chrome.runtime?.id && chrome.runtime?.sendMessage);
+  } catch (_error) {
+    veyraRuntimeInvalidated = true;
+    return false;
+  }
+}
+
+function veyraMarkRuntimeInvalidated(error) {
+  if (/context invalidated|extension context/i.test(String(error?.message || error || ""))) {
+    veyraRuntimeInvalidated = true;
+  }
+}
+
 function veyraExtractGmailMessage() {
   const subject = document.querySelector("h2[data-thread-perm-id], h2.hP")?.innerText || "Gmail message";
   const senderNode = document.querySelector("[email], .gD[email], .gD");
@@ -76,6 +94,39 @@ function veyraDateCellForRow(row) {
   return row.querySelector(".xW, td[role='gridcell']:last-child, [aria-label*='Date'], [title*='20']");
 }
 
+function veyraModelRowsHtml(report) {
+  const spoofRows = (report.spoofMl?.results || []).slice(0, 5).map((result) => {
+    const flags = Array.isArray(result.flags) && result.flags.length
+      ? result.flags.slice(0, 4).map((flag) => `${veyraGmailEscape(flag.text || "invisible")} -> ${veyraGmailEscape(flag.replacement || "")} @ ${flag.start}-${flag.end}`).join("; ")
+      : "none";
+    return `
+      <div class="veyra-gmail-tooltip-finding">
+        <b>ML spoof output</b>
+        <span>${veyraGmailEscape(result.input)} | ${Math.round(Number(result.spoof_probability || 0) * 100)}% | ${veyraGmailEscape(result.label_text || "")}</span>
+        <p>Flags: ${flags}</p>
+      </div>
+    `;
+  }).join("");
+
+  const topic = report.topicMatch?.status === "ok" ? `
+    <div class="veyra-gmail-tooltip-finding">
+      <b>OpenAI topic output</b>
+      <span>${report.topicMatch.match ? "match" : "mismatch"} | ${veyraGmailEscape(report.topicMatch.model || "")}</span>
+      <p>Header: ${veyraGmailEscape(report.topicMatch.headerTopic?.topic || "")} / ${veyraGmailEscape(report.topicMatch.headerTopic?.intent || "")}</p>
+      <p>Body: ${veyraGmailEscape(report.topicMatch.bodyTopic?.topic || "")} / ${veyraGmailEscape(report.topicMatch.bodyTopic?.intent || "")}</p>
+      <p>${veyraGmailEscape(report.topicMatch.reason || "")}</p>
+    </div>
+  ` : report.topicMatch?.status ? `
+    <div class="veyra-gmail-tooltip-finding">
+      <b>OpenAI topic output</b>
+      <span>${veyraGmailEscape(report.topicMatch.status)}</span>
+      <p>${veyraGmailEscape(report.topicMatch.reason || "No topic model output.")}</p>
+    </div>
+  ` : "";
+
+  return `${spoofRows}${topic}`;
+}
+
 function veyraTooltipHtml(report) {
   const exact = report.findings.filter((finding) => String(finding.category || "").startsWith("Exact")).slice(0, 3);
   const semantic = report.findings.filter((finding) => String(finding.category || "").includes("AI") || String(finding.category || "").includes("ML")).slice(0, 3);
@@ -87,22 +138,10 @@ function veyraTooltipHtml(report) {
       <p>${veyraGmailEscape(finding.detail)}</p>
     </div>
   `;
-  const framework = report.framework ? `
-    <div class="veyra-gmail-tooltip-finding">
-      <b>${report.framework.senderSeenBefore ? "Known sender path" : "AI/ML email scan path"}</b>
-      <span>${veyraGmailEscape(report.framework.steps?.mergeDecision || "allow")}</span>
-      <p>${veyraGmailEscape(veyraFrameworkSummary(report))}</p>
-    </div>
-  ` : "";
-  const aiSummary = report.ai?.summary ? `
-    <div class="veyra-gmail-tooltip-ai">
-      <b>AI interpretation</b>
-      <p>${veyraGmailEscape(report.ai.summary)}</p>
-    </div>
-  ` : "";
   const exactHtml = exact.length ? `<div class="veyra-gmail-tooltip-section">Exact evidence</div>${exact.map(findingHtml).join("")}` : "";
   const semanticHtml = semantic.length ? `<div class="veyra-gmail-tooltip-section">AI/ML signals</div>${semantic.map(findingHtml).join("")}` : "";
   const otherHtml = other.length ? `<div class="veyra-gmail-tooltip-section">Model context</div>${other.map(findingHtml).join("")}` : "";
+  const modelOutputHtml = veyraModelRowsHtml(report);
 
   return `
     <div class="veyra-gmail-tooltip-head">
@@ -110,11 +149,10 @@ function veyraTooltipHtml(report) {
       <span>${report.score}/100</span>
     </div>
     ${report.surface === "email-preview" ? "<p>Inbox preview score. Open the email for the full-message score.</p>" : ""}
-    ${framework}
-    ${aiSummary}
+    ${modelOutputHtml ? `<div class="veyra-gmail-tooltip-section">Raw model output</div>${modelOutputHtml}` : ""}
     ${exactHtml}
     ${semanticHtml}
-    ${otherHtml || (!exactHtml && !semanticHtml ? "<p>No strong identity or AI/ML risk signals were found in the available preview.</p>" : "")}
+    ${otherHtml || (!exactHtml && !semanticHtml && !modelOutputHtml ? "<p>No local model output was available for this preview.</p>" : "")}
     <em>${veyraGmailEscape(report.recommendation)}</em>
   `;
 }
@@ -202,18 +240,31 @@ function veyraRequestEmailPreview(payload, callback) {
     callback(report || null);
   };
 
-  if (typeof chrome === "undefined" || !chrome.runtime?.sendMessage) {
+  if (!veyraCanUseRuntime()) {
     fallback();
     return;
   }
 
-  chrome.runtime.sendMessage({ type: "SCAN_EMAIL_PREVIEW", payload }, (report) => {
-    if (chrome.runtime.lastError || !report) {
-      fallback();
-      return;
-    }
-    callback(report);
-  });
+  try {
+    chrome.runtime.sendMessage({ type: "SCAN_EMAIL_PREVIEW", payload }, (report) => {
+      let runtimeError = null;
+      try {
+        runtimeError = chrome.runtime?.lastError;
+      } catch (error) {
+        veyraMarkRuntimeInvalidated(error);
+        runtimeError = error;
+      }
+
+      if (runtimeError || !report) {
+        fallback();
+        return;
+      }
+      callback(report);
+    });
+  } catch (error) {
+    veyraMarkRuntimeInvalidated(error);
+    fallback();
+  }
 }
 
 function veyraScanGmailRows() {
@@ -242,8 +293,13 @@ function veyraRenderGmailBar(report) {
   document.querySelector(".veyra-email-bar")?.remove();
   const color = veyraRiskColor(report.level);
   const label = `${veyraRiskLabel(report.level)} Risk`;
-  const frameworkSummary = veyraFrameworkSummary(report);
-  const aiSummary = report.ai?.summary || "";
+  const topModel = report.spoofMl?.results?.[0];
+  const topicLine = report.topicMatch?.status === "ok"
+    ? `${report.topicMatch.match ? "Topic match" : "Topic mismatch"}: ${report.topicMatch.reason}`
+    : report.topicMatch?.reason || "";
+  const primaryDetail = topModel
+    ? `Spoof ML: ${Math.round(Number(topModel.spoof_probability || 0) * 100)}% on ${topModel.input}`
+    : report.findings[0]?.detail || "No local model output available.";
   const bar = document.createElement("aside");
   bar.className = "veyra-email-bar";
   bar.innerHTML = `
@@ -253,9 +309,8 @@ function veyraRenderGmailBar(report) {
       <span style="color:${color};font-weight:800">${label}</span>
       <span>${report.score}/100</span>
     </div>
-    <p style="margin:10px 0 0;color:#4b5563;font-size:13px">${veyraGmailEscape(report.findings[0]?.detail || "No strong spoofing indicators found.")}</p>
-    <p style="margin:8px 0 0;color:#475569;font-size:12px;line-height:1.42">${veyraGmailEscape(frameworkSummary)}</p>
-    ${aiSummary ? `<p style="margin:8px 0 0;color:#475569;font-size:12px;line-height:1.42">${veyraGmailEscape(aiSummary)}</p>` : ""}
+    <p style="margin:10px 0 0;color:#4b5563;font-size:13px">${veyraGmailEscape(primaryDetail)}</p>
+    ${topicLine ? `<p style="margin:8px 0 0;color:#475569;font-size:12px;line-height:1.42">${veyraGmailEscape(topicLine)}</p>` : ""}
     <button class="veyra-button secondary" style="width:100%;margin-top:12px" type="button">View details</button>
   `;
 
@@ -264,9 +319,8 @@ function veyraRenderGmailBar(report) {
     detail.className = "veyra-doc-rail";
     detail.style.top = "96px";
     detail.innerHTML = `
-      <strong>Findings</strong>
-      <p><b>Framework</b>: ${veyraGmailEscape(frameworkSummary)}</p>
-      ${aiSummary ? `<p><b>AI summary</b>: ${veyraGmailEscape(aiSummary)}</p>` : ""}
+      <strong>Model Output</strong>
+      ${veyraModelRowsHtml(report) || "<p>No spoof/topic model output returned.</p>"}
       ${report.findings.slice(0, 6).map((finding) => `<p><b>${veyraGmailEscape(finding.category)}</b>: ${veyraGmailEscape(finding.detail)}</p>`).join("") || "<p>No major findings.</p>"}
     `;
     document.body.appendChild(detail);
@@ -284,7 +338,33 @@ function veyraScanOpenedGmailMessage() {
   if (!payload.text || fingerprint === veyraLastFingerprint) return;
 
   veyraLastFingerprint = fingerprint;
-  chrome.runtime.sendMessage({ type: "SCAN_SURFACE", payload }, veyraRenderGmailBar);
+  if (!veyraCanUseRuntime()) {
+    const report = window.VeyraRiskEngine?.analyzeSurface(payload);
+    if (report) veyraRenderGmailBar(report);
+    return;
+  }
+
+  try {
+    chrome.runtime.sendMessage({ type: "SCAN_SURFACE", payload }, (report) => {
+      let runtimeError = null;
+      try {
+        runtimeError = chrome.runtime?.lastError;
+      } catch (error) {
+        veyraMarkRuntimeInvalidated(error);
+        runtimeError = error;
+      }
+      if (runtimeError || !report) {
+        const fallbackReport = window.VeyraRiskEngine?.analyzeSurface(payload);
+        if (fallbackReport) veyraRenderGmailBar(fallbackReport);
+        return;
+      }
+      veyraRenderGmailBar(report);
+    });
+  } catch (error) {
+    veyraMarkRuntimeInvalidated(error);
+    const report = window.VeyraRiskEngine?.analyzeSurface(payload);
+    if (report) veyraRenderGmailBar(report);
+  }
 }
 
 function veyraScanGmail() {

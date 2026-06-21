@@ -61,8 +61,21 @@ Try it from the command line:
 ```powershell
 python ml\spoof_cli.py "supp0rt@paypa1.com"
 python ml\spoof_cli.py "https://rnicrosoft.com/login"
-python ml\spoof_cli.py "Please verify at goοgle.com"
+python ml\spoof_cli.py "google.com"
 ```
+
+Run it as a local server for the extension:
+
+```powershell
+python ml\spoof_model_server.py
+```
+
+The server listens at:
+
+- `GET http://127.0.0.1:8767/health`
+- `POST http://127.0.0.1:8767/score` with `{ "inputs": ["supp0rt@paypa1.com", "https://rnicrosoft.com/login"] }`
+
+When this server is running, Gmail scans send the visible sender address and link destinations to the model. Veyra then adds `ML spoof model` findings to the same report used by the Gmail risk bar and tooltip/details.
 
 The beginner version uses only `scikit-learn`, `pandas`, and `numpy` for the model. The exact flagging logic is deterministic so users can see which characters triggered suspicion.
 

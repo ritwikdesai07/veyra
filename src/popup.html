@@ -40,11 +40,19 @@
       </section>
 
       <section class="settings">
+        <label class="stacked">
+          <span>OpenAI API key</span>
+          <input id="openai-key" type="password" placeholder="sk-...">
+        </label>
+        <label class="stacked">
+          <span>OpenAI model</span>
+          <input id="openai-model" type="text" placeholder="gpt-4.1-mini">
+        </label>
         <label>
           <span>Ad-supported AI mode</span>
           <input id="ad-mode" type="checkbox">
         </label>
-        <p>Prototype setting only. A real product should avoid showing ads on high-risk security decisions.</p>
+        <p>OpenAI is used only for opened-email header/body topic comparison. Prototype setting only; production should proxy and protect keys server-side.</p>
       </section>
     </main>
     <script src="popup.js"></script>

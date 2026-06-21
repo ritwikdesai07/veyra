@@ -16,21 +16,21 @@ CONFUSABLE_MAP = {
     "5": "s",
     "7": "t",
     "8": "b",
-    "а": "a",
-    "е": "e",
-    "о": "o",
-    "р": "p",
-    "с": "c",
-    "у": "y",
-    "х": "x",
-    "і": "i",
-    "ν": "v",
-    "μ": "m",
-    "α": "a",
-    "ο": "o",
-    "ρ": "p",
-    "ı": "i",
-    "ⅼ": "l",
+    "\u0430": "a",  # Cyrillic a
+    "\u0435": "e",  # Cyrillic e
+    "\u043e": "o",  # Cyrillic o
+    "\u0440": "p",  # Cyrillic er
+    "\u0441": "c",  # Cyrillic es
+    "\u0443": "y",  # Cyrillic u
+    "\u0445": "x",  # Cyrillic ha
+    "\u0456": "i",  # Cyrillic i
+    "\u03bd": "v",  # Greek nu
+    "\u03bc": "m",  # Greek mu
+    "\u03b1": "a",  # Greek alpha
+    "\u03bf": "o",  # Greek omicron
+    "\u03c1": "p",  # Greek rho
+    "\u0131": "i",  # dotless i
+    "\u217c": "l",  # small roman numeral fifty
     "|": "l",
     "!": "l",
 }
